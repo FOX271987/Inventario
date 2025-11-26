@@ -13,14 +13,35 @@ app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta-temporal-12345')
 
 # Configuración de la base de datos
 from models import db
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///seguridad.db'
+
+# Detectar si estamos en Render (producción) o local (desarrollo)
+if os.getenv('RENDER', 'false').lower() == 'true':
+    # PostgreSQL en Render
+    DB_HOST = os.getenv('DB_HOST')
+    DB_NAME = os.getenv('DB_NAME')
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql+pg8000://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    print("✅ Usando PostgreSQL en Render")
+else:
+    # SQLite en local
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///seguridad.db'
+    print("✅ Usando SQLite en local")
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
+
+# Crear tablas automáticamente en producción
+with app.app_context():
+    db.create_all()
+    print("✅ Tablas de base de datos verificadas/creadas")
 
 # Configurar CORS
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:5000", "http://127.0.0.1:5000"],
+        "origins": "*",  # Permitir todos los orígenes en producción
         "methods": ["GET", "POST", "PUT", "DELETE"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
