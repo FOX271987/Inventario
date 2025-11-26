@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Mi Perfil</h2>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Información del Usuario</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Nombre:</strong> {{ usuario.nombre }}</p>
+                    <p><strong>Email:</strong> {{ usuario.email }}</p>
+                    <p><strong>Rol:</strong> {{ usuario.rol }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Última Ubicación Registrada</h5>
+                </div>
+                <div class="card-body">
+                    {% if ubicacion %}
+                        <p><strong>Coordenadas:</strong> {{ "%.6f"|format(ubicacion.latitud) }}, {{ "%.6f"|format(ubicacion.longitud) }}</p>
+                        {% if ubicacion.precision_metros %}
+                            <p><strong>Precisión:</strong> ±{{ "%.0f"|format(ubicacion.precision_metros) }} metros</p>
+                        {% endif %}
+                        {% if ubicacion.direccion %}
+                            <p><strong>Dirección:</strong> {{ ubicacion.direccion }}</p>
+                        {% endif %}
+                        {% if ubicacion.ciudad %}
+                            <p><strong>Ciudad:</strong> {{ ubicacion.ciudad }}</p>
+                        {% endif %}
+                        {% if ubicacion.pais %}
+                            <p><strong>País:</strong> {{ ubicacion.pais }}</p>
+                        {% endif %}
+                        <p><strong>Última actualización:</strong> {{ ubicacion.actualizado.strftime('%d/%m/%Y %H:%M') }}</p>
+                    {% else %}
+                        <p class="text-muted">No hay ubicación registrada</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="mt-3">
+        <button class="btn btn-primary" onclick="actualizarUbicacion()">
+            <i class="bi bi-geo-alt"></i> Actualizar Mi Ubicación
+        </button>
+        <a href="{{ url_for('users.listar_usuarios') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+    </div>
+</div>
+
+<script>
+function actualizarUbicacion() {
+    if (!navigator.geolocation) {
+        alert('Tu navegador no soporta geolocalización');
+        return;
+    }
+    
+    // Mostrar indicador de carga
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Obteniendo ubicación...';
+    btn.disabled = true;
+    
+    navigator.geolocation.getCurrentPosition(
+        function(posicion) {
+            const ubicacion = {
+                latitud: posicion.coords.latitude,
+                longitud: posicion.coords.longitude,
+                precision: posicion.coords.accuracy
+            };
+            
+            // Enviar al servidor - URL CORREGIDA
+            fetch('/api/location/actualizar-ubicacion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(ubicacion)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error HTTP: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    alert('Ubicación actualizada correctamente');
+                    location.reload();
+                } else {
+                    alert('Error al actualizar ubicación: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al conectar con el servidor: ' + error.message);
+            })
+            .finally(() => {
+                // Restaurar botón
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
+        },
+        function(error) {
+            let mensaje = 'Error al obtener ubicación: ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    mensaje += 'Permiso denegado. Por favor, permite el acceso a tu ubicación.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    mensaje += 'Ubicación no disponible.';
+                    break;
+                case error.TIMEOUT:
+                    mensaje += 'Tiempo de espera agotado.';
+                    break;
+                default:
+                    mensaje += error.message;
+            }
+            alert(mensaje);
+            // Restaurar botón
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000
+        }
+    );
+}
+</script>
+{% endblock %}

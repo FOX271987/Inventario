@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modo Offline - Sistema de Seguridad</title>
+    <style>
+        /* Estilos críticos inline para la página offline */
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #212529;
+            line-height: 1.5;
+        }
+        .offline-container {
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .offline-icon {
+            font-size: 48px;
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #495057;
+            margin-bottom: 15px;
+        }
+        p {
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #0d6efd;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background-color: #0b5ed7;
+        }
+        .features {
+            text-align: left;
+            margin-top: 25px;
+        }
+        .features ul {
+            padding-left: 20px;
+        }
+        .features li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">📶</div>
+        <h1>Estás en modo offline</h1>
+        <p>No hay conexión a internet en este momento, pero aún puedes usar algunas funciones de la aplicación.</p>
+        
+        <div class="features">
+            <h3>Funciones disponibles offline:</h3>
+            <ul>
+                <li>Iniciar sesión (el código de verificación aparecerá en la consola)</li>
+                <li>Registrarte como nuevo usuario</li>
+                <li>Recuperar tu contraseña</li>
+                <li>Verificar códigos de autenticación</li>
+            </ul>
+        </div>
+        
+        <p>Para acceder a todas las funciones, necesitarás conexión a internet.</p>
+        <button class="btn" onclick="window.location.reload()">Reintentar conexión</button>
+    </div>
+</body>
+</html>

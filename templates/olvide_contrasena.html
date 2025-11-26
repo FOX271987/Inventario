@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="auth-container">
+    <h2 class="text-center mb-4">Recuperar Contraseña</h2>
+    <p class="text-center text-muted mb-4">
+        Ingresa tu email y te enviaremos un código para recuperar tu contraseña
+    </p>
+    
+    <form method="POST">
+        <div class="mb-3">
+            <label for="email" class="form-label">Email</label>
+            <input type="email" class="form-control" id="email" name="email" 
+                   placeholder="tu@email.com" required>
+        </div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Enviar Código</button>
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <p><a href="{{ url_for('login') }}">Volver al inicio de sesión</a></p>
+    </div>
+</div>
+{% endblock %}

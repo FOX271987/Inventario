@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Editar Usuario</h1>
+
+<form id="formEditarUsuario" method="POST">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="nombre" class="form-label">Nombre</label>
+                <input type="text" class="form-control" id="nombre" name="nombre" 
+                       value="{{ usuario.nombre }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" 
+                       value="{{ usuario.email }}" required>
+            </div>
+
+            {% if user_rol == 'admin' %}
+            <div class="mb-3">
+                <label for="rol" class="form-label">Rol</label>
+                <select class="form-select" id="rol" name="rol" required>
+                    <option value="admin" {% if usuario.rol == 'admin' %}selected{% endif %}>Administrador</option>
+                    <option value="editor" {% if usuario.rol == 'editor' %}selected{% endif %}>Editor</option>
+                    <option value="lector" {% if usuario.rol == 'lector' %}selected{% endif %}>Lector</option>
+                </select>
+            </div>
+            {% else %}
+            <input type="hidden" name="rol" value="{{ usuario.rol }}">
+            <div class="mb-3">
+                <label class="form-label">Rol</label>
+                <div class="form-control-plaintext">
+                    <span class="badge bg-{{ 
+                        'success' if usuario.rol == 'admin' 
+                        else 'warning' if usuario.rol == 'editor' 
+                        else 'info' 
+                    }}">
+                        {{ usuario.rol }}
+                    </span>
+                    <small class="text-muted ms-2">(Solo administradores pueden modificar roles)</small>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label for="nueva_password" class="form-label">Nueva Contraseña (opcional)</label>
+                <input type="password" class="form-control" id="nueva_password" name="nueva_password" 
+                       placeholder="Dejar vacío para mantener la contraseña actual">
+                <div class="form-text">Mínimo 6 caracteres</div>
+            </div>
+
+            <div class="d-grid gap-2 d-md-flex">
+                <button type="button" id="btnActualizarUsuario" class="btn btn-primary">Actualizar Usuario</button>
+                <a href="{{ url_for('users.listar_usuarios') }}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Modal para autenticación PIN -->
+<div class="modal fade" id="modalPINEdicion" tabindex="-1" aria-labelledby="modalPINEdicionLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalPINEdicionLabel">
+                    <i class="bi bi-shield-check"></i>
+                    Autenticación de Seguridad Requerida
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Estás a punto de modificar información de usuario. Por seguridad, se requiere autenticación adicional.
+                </div>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Para continuar con la actualización del usuario, ingresa tu PIN de autorización. 
+                    <strong>Revisa la consola del navegador para obtener el código.</strong>
+                </div>
+                <div id="cambiosDetectados" class="alert alert-secondary d-none">
+                    <strong>Cambios detectados:</strong>
+                    <ul id="listaCambios" class="mb-0 mt-2"></ul>
+                </div>
+                <div class="mb-3">
+                    <label for="pinInputEdicion" class="form-label">PIN de Autorización (6 dígitos)</label>
+                    <input type="password" class="form-control" id="pinInputEdicion" maxlength="6" pattern="[0-9]{6}" 
+                           placeholder="000000" autocomplete="off">
+                    <div class="form-text">Ingresa el PIN mostrado en la consola del navegador</div>
+                </div>
+                <div id="pinErrorEdicion" class="alert alert-danger d-none">
+                    PIN incorrecto. Por favor verifica el código en la consola.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" id="btnVerificarPINEdicion" class="btn btn-primary">
+                    <i class="bi bi-check-circle"></i>
+                    Verificar PIN
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pasar datos del servidor a JavaScript -->
+<script type="application/json" id="userData">
+{
+    "nombre": {{ usuario.nombre | tojson }},
+    "email": {{ usuario.email | tojson }},
+    "rol": {{ usuario.rol | tojson }},
+    "userRol": {{ user_rol | tojson }}
+}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Obtener datos del servidor
+    const userData = JSON.parse(document.getElementById('userData').textContent);
+    const isAdmin = userData.userRol === 'admin';
+    
+    let pinGenerado = '';
+    const modal = new bootstrap.Modal(document.getElementById('modalPINEdicion'));
+    const btnActualizarUsuario = document.getElementById('btnActualizarUsuario');
+    const btnVerificarPIN = document.getElementById('btnVerificarPINEdicion');
+    const pinInput = document.getElementById('pinInputEdicion');
+    const pinError = document.getElementById('pinErrorEdicion');
+    const formEditarUsuario = document.getElementById('formEditarUsuario');
+    
+    // Valores originales para detectar cambios
+    const valoresOriginales = {
+        nombre: userData.nombre,
+        email: userData.email,
+        rol: userData.rol,
+        password: ''
+    };
+
+    // Generar PIN de 6 dígitos
+    function generarPIN() {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    // Mostrar PIN en consola con estilo para edición
+    function mostrarPINEnConsola(pin, cambios) {
+        console.clear();
+        console.log('%c🔐 AUTENTICACIÓN DE EDICIÓN REQUERIDA 🔐', 
+                   'color: #fd7e14; font-size: 18px; font-weight: bold;');
+        console.log('%c════════════════════════════════════════════════', 
+                   'color: #6c757d;');
+        console.log('%cUsuario a modificar: ' + userData.nombre + ' (' + userData.email + ')', 
+                   'color: #0d6efd; font-weight: bold;');
+        console.log('%cCambios detectados:', 'color: #dc3545; font-weight: bold;');
+        cambios.forEach(cambio => {
+            console.log(`%c  • ${cambio}`, 'color: #6c757d;');
+        });
+        console.log('%c────────────────────────────────────────────────', 
+                   'color: #6c757d;');
+        console.log('%cPIN de verificación:', 'color: #0d6efd; font-weight: bold;');
+        console.log(`%c${pin}`, 'color: #198754; font-size: 24px; font-weight: bold; background: #f8f9fa; padding: 10px;');
+        console.log('%c════════════════════════════════════════════════', 
+                   'color: #6c757d;');
+        console.log('%cIngresa este PIN en el modal para autorizar los cambios.', 
+                   'color: #6c757d; font-style: italic;');
+        console.log('%c⚠️  Este PIN es válido por 5 minutos', 
+                   'color: #fd7e14; font-weight: bold;');
+    }
+
+    // Detectar cambios en el formulario
+    function detectarCambios() {
+        const cambios = [];
+        const nombre = document.getElementById('nombre').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const nuevaPassword = document.getElementById('nueva_password').value;
+        
+        if (nombre !== valoresOriginales.nombre) {
+            cambios.push(`Nombre: "${valoresOriginales.nombre}" → "${nombre}"`);
+        }
+        
+        if (email !== valoresOriginales.email) {
+            cambios.push(`Email: "${valoresOriginales.email}" → "${email}"`);
+        }
+        
+        // Solo verificar rol si el usuario actual es admin
+        if (isAdmin) {
+            const rol = document.getElementById('rol').value;
+            if (rol !== valoresOriginales.rol) {
+                cambios.push(`Rol: "${valoresOriginales.rol}" → "${rol}"`);
+            }
+        }
+        
+        if (nuevaPassword.trim() !== '') {
+            cambios.push('Contraseña: Nueva contraseña establecida');
+        }
+        
+        return cambios;
+    }
+
+    // Mostrar cambios en el modal
+    function mostrarCambiosEnModal(cambios) {
+        const cambiosDiv = document.getElementById('cambiosDetectados');
+        const listaCambios = document.getElementById('listaCambios');
+        
+        if (cambios.length > 0) {
+            listaCambios.innerHTML = '';
+            cambios.forEach(cambio => {
+                const li = document.createElement('li');
+                li.textContent = cambio;
+                listaCambios.appendChild(li);
+            });
+            cambiosDiv.classList.remove('d-none');
+        } else {
+            cambiosDiv.classList.add('d-none');
+        }
+    }
+
+    // Validar formulario
+    function validarFormulario() {
+        const nombre = document.getElementById('nombre').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const nuevaPassword = document.getElementById('nueva_password').value;
+
+        if (!nombre || !email) {
+            alert('El nombre y email son obligatorios');
+            return false;
+        }
+
+        if (nuevaPassword && nuevaPassword.length < 6) {
+            alert('La nueva contraseña debe tener al menos 6 caracteres');
+            return false;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            alert('Por favor ingresa un email válido');
+            return false;
+        }
+
+        return true;
+    }
+
+    // Evento para actualizar usuario
+    btnActualizarUsuario.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        if (!validarFormulario()) {
+            return;
+        }
+
+        // Detectar cambios
+        const cambios = detectarCambios();
+        
+        if (cambios.length === 0) {
+            if (confirm('No se detectaron cambios. ¿Deseas continuar de todos modos?')) {
+                formEditarUsuario.submit();
+            }
+            return;
+        }
+
+        // Generar nuevo PIN
+        pinGenerado = generarPIN();
+        mostrarPINEnConsola(pinGenerado, cambios);
+        mostrarCambiosEnModal(cambios);
+        
+        // Limpiar campo PIN y errores
+        pinInput.value = '';
+        pinError.classList.add('d-none');
+        
+        // Mostrar modal
+        modal.show();
+        
+        // Enfocar campo PIN cuando se muestre el modal
+        document.getElementById('modalPINEdicion').addEventListener('shown.bs.modal', function() {
+            pinInput.focus();
+        }, { once: true });
+    });
+
+    // Evento para verificar PIN
+    btnVerificarPIN.addEventListener('click', function() {
+        const pinIngresado = pinInput.value.trim();
+        
+        if (pinIngresado.length !== 6) {
+            mostrarErrorPIN('El PIN debe tener exactamente 6 dígitos');
+            return;
+        }
+
+        if (pinIngresado === pinGenerado) {
+            // PIN correcto, ocultar modal y enviar formulario
+            modal.hide();
+            console.log('%c✅ PIN VERIFICADO CORRECTAMENTE', 'color: #198754; font-size: 16px; font-weight: bold;');
+            console.log('%cProcediendo con la actualización del usuario...', 'color: #6c757d;');
+            
+            // Enviar formulario
+            formEditarUsuario.submit();
+        } else {
+            mostrarErrorPIN('PIN incorrecto. Verifica el código en la consola del navegador.');
+            console.log('%c❌ PIN INCORRECTO', 'color: #dc3545; font-size: 16px; font-weight: bold;');
+            console.log('%cEl PIN correcto es:', 'color: #6c757d;');
+            console.log(`%c${pinGenerado}`, 'color: #198754; font-size: 20px; font-weight: bold;');
+        }
+    });
+
+    // Función para mostrar errores de PIN
+    function mostrarErrorPIN(mensaje) {
+        pinError.textContent = mensaje;
+        pinError.classList.remove('d-none');
+        pinInput.classList.add('is-invalid');
+        pinInput.focus();
+        pinInput.select();
+    }
+
+    // Limpiar error cuando el usuario escriba
+    pinInput.addEventListener('input', function() {
+        pinError.classList.add('d-none');
+        pinInput.classList.remove('is-invalid');
+        
+        // Solo permitir números
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+
+    // Permitir envío con Enter
+    pinInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            btnVerificarPIN.click();
+        }
+    });
+
+    // Limpiar consola cuando se cierre el modal
+    document.getElementById('modalPINEdicion').addEventListener('hidden.bs.modal', function() {
+        if (pinInput.value !== pinGenerado) {
+            console.clear();
+            console.log('%cModal de autenticación de edición cerrado', 'color: #6c757d;');
+        }
+    });
+
+    // Auto-expirar PIN después de 5 minutos
+    function programarExpiracionPIN() {
+        setTimeout(function() {
+            if (pinGenerado) {
+                console.log('%c⏰ PIN EXPIRADO', 'color: #dc3545; font-size: 16px; font-weight: bold;');
+                console.log('%cEl PIN ha expirado por seguridad. Genera uno nuevo.', 'color: #6c757d;');
+                pinGenerado = '';
+            }
+        }, 5 * 60 * 1000); // 5 minutos
+    }
+
+    // Programar expiración cuando se genere un PIN
+    btnActualizarUsuario.addEventListener('click', function() {
+        if (pinGenerado) {
+            programarExpiracionPIN();
+        }
+    });
+
+    // Indicador visual de cambios en tiempo real
+    const campos = ['nombre', 'email', 'nueva_password'];
+    
+    // Agregar 'rol' solo si el usuario es admin
+    if (isAdmin) {
+        campos.push('rol');
+    }
+    
+    campos.forEach(campo => {
+        const elemento = document.getElementById(campo);
+        if (elemento) {
+            elemento.addEventListener('input', function() {
+                const cambios = detectarCambios();
+                btnActualizarUsuario.innerHTML = cambios.length > 0 
+                    ? `<i class="bi bi-shield-check"></i> Actualizar Usuario (${cambios.length} cambio${cambios.length > 1 ? 's' : ''})`
+                    : 'Actualizar Usuario';
+                
+                btnActualizarUsuario.classList.toggle('btn-warning', cambios.length > 0);
+                btnActualizarUsuario.classList.toggle('btn-primary', cambios.length === 0);
+            });
+        }
+    });
+});
+</script>
+
+<style>
+.modal-content {
+    border: 2px solid #fd7e14;
+}
+
+.modal-header {
+    background-color: #fff3cd;
+    border-bottom: 2px solid #ffeaa7;
+}
+
+#pinInputEdicion {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    letter-spacing: 0.3em;
+}
+
+#pinInputEdicion:focus {
+    border-color: #fd7e14;
+    box-shadow: 0 0 0 0.25rem rgba(253, 126, 20, 0.25);
+}
+
+.alert-warning {
+    border-left: 4px solid #fd7e14;
+}
+
+.alert-info {
+    border-left: 4px solid #0dcaf0;
+}
+
+.alert-secondary {
+    border-left: 4px solid #6c757d;
+}
+
+.btn-warning:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+#listaCambios {
+    font-size: 0.9rem;
+}
+
+#listaCambios li {
+    margin-bottom: 0.25rem;
+}
+</style>
+{% endblock %}

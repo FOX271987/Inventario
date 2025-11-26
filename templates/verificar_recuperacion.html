@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="auth-container">
+    <h2 class="text-center mb-4">Restablecer Contraseña</h2>
+    
+    {% if codigo_offline %}
+    <div class="alert alert-warning">
+        <strong>Modo Offline:</strong> 
+        <span>Usa este código: </span>
+        <code id="offlineCode">{{ codigo_offline }}</code>
+        <button class="btn btn-sm btn-outline-secondary ms-2" onclick="copyOfflineCode()">
+            <i class="bi bi-clipboard"></i> Copiar
+        </button>
+    </div>
+    <script>
+    function copyOfflineCode() {
+        const code = document.getElementById('offlineCode').textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            alert('Código copiado al portapapeles');
+        });
+    }
+    // Mostrar código en consola
+    console.log('Código de recuperación offline: {{ codigo_offline }}');
+    </script>
+    {% else %}
+    <p class="text-center text-muted mb-4">
+        Hemos enviado un código de verificación a tu email
+    </p>
+    {% endif %}
+    
+    <form method="POST">
+        <div class="mb-3">
+            <label for="codigo" class="form-label">Código de Verificación</label>
+            <input type="text" class="form-control" id="codigo" name="codigo" 
+                   placeholder="Ingresa el código de 6 dígitos" required maxlength="6"
+                   pattern="[0-9]{6}" title="Por favor ingresa exactamente 6 dígitos">
+            <div class="form-text">El código expirará en 5 minutos</div>
+        </div>
+
+        <div class="mb-3">
+            <label for="nueva_password" class="form-label">Nueva Contraseña</label>
+            <input type="password" class="form-control" id="nueva_password" name="nueva_password" 
+                   placeholder="Mínimo 6 caracteres" required minlength="6">
+        </div>
+
+        <div class="mb-3">
+            <label for="confirm_password" class="form-label">Confirmar Contraseña</label>
+            <input type="password" class="form-control" id="confirm_password" name="confirm_password" 
+                   placeholder="Repite tu contraseña" required minlength="6">
+        </div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Restablecer Contraseña</button>
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <p><a href="{{ url_for('olvide_contrasena') }}">Solicitar nuevo código</a></p>
+    </div>
+</div>
+{% endblock %}

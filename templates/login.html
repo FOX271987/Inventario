@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="auth-container">
+    <h2 class="text-center mb-4">Iniciar Sesión</h2>
+    
+    <form method="POST" id="loginForm">
+        <div class="mb-3">
+            <label for="email" class="form-label">Email</label>
+            <input type="email" class="form-control" id="email" name="email" 
+                   placeholder="tu@email.com" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">Contraseña</label>
+            <input type="password" class="form-control" id="password" name="password" 
+                   placeholder="Tu contraseña" required>
+        </div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
+        </div>
+    </form>
+
+    <!-- Separador -->
+    <div class="text-center my-4">
+        <span class="text-muted">O continúa con</span>
+    </div>
+
+    <!-- Botón de Google -->
+    <div class="d-grid gap-2">
+        <a href="{{ url_for('auth.login_google') }}" class="btn btn-outline-danger">
+            <i class="bi bi-google"></i> Iniciar con Google
+        </a>
+    </div>
+
+    <div class="text-center mt-3">
+        <p>¿No tienes cuenta? <a href="{{ url_for('auth.registro') }}">Regístrate aquí</a></p>
+        <p><a href="{{ url_for('auth.olvide_contrasena') }}">¿Olvidaste tu contraseña?</a></p>
+    </div>
+</div>
+
+<script>
+// Función para obtener ubicación con fallback offline
+function obtenerUbicacionConFallback() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(obtenerUbicacionOffline());
+            return;
+        }
+
+        const opciones = {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000
+        };
+        
+        navigator.geolocation.getCurrentPosition(
+            (posicion) => {
+                const ubicacion = {
+                    latitud: posicion.coords.latitude,
+                    longitud: posicion.coords.longitude,
+                    precision: posicion.coords.accuracy,
+                    fuente: 'gps',
+                    timestamp: new Date().toISOString()
+                };
+                resolve(ubicacion);
+            },
+            (error) => {
+                console.log('GPS no disponible, usando ubicación offline:', error.message);
+                resolve(obtenerUbicacionOffline());
+            },
+            opciones
+        );
+    });
+}
+
+// Función para obtener ubicación offline
+function obtenerUbicacionOffline() {
+    // Intentar obtener ubicación guardada anteriormente
+    const ubicacionGuardada = localStorage.getItem('ultima_ubicacion_valida');
+    
+    if (ubicacionGuardada) {
+        try {
+            const ubicacion = JSON.parse(ubicacionGuardada);
+            console.log('Usando ubicación guardada offline');
+            return {
+                ...ubicacion,
+                fuente: 'cache',
+                precision: (ubicacion.precision || 100) + 500, // Aumentar margen de error
+                offline: true
+            };
+        } catch (e) {
+            console.error('Error parseando ubicación guardada:', e);
+        }
+    }
+    
+    // Ubicación por defecto (puedes ajustar estas coordenadas)
+    console.log('Usando ubicación por defecto offline');
+    return {
+        latitud: 19.4326,  // Por ejemplo, Ciudad de México
+        longitud: -99.1332,
+        precision: 50000,   // Alta incertidumbre en modo offline
+        fuente: 'default',
+        offline: true,
+        timestamp: new Date().toISOString()
+    };
+}
+
+// Guardar ubicación válida para uso futuro offline
+function guardarUbicacionParaOffline(ubicacion) {
+    try {
+        localStorage.setItem('ultima_ubicacion_valida', JSON.stringify({
+            latitud: ubicacion.latitud,
+            longitud: ubicacion.longitud,
+            precision: ubicacion.precision,
+            timestamp: new Date().toISOString()
+        }));
+        
+        // Limpiar ubicaciones muy antiguas (más de 7 días)
+        const unaSemana = 7 * 24 * 60 * 60 * 1000;
+        const ubicacionGuardada = JSON.parse(localStorage.getItem('ultima_ubicacion_valida') || '{}');
+        if (ubicacionGuardada.timestamp) {
+            const edad = Date.now() - new Date(ubicacionGuardada.timestamp).getTime();
+            if (edad > unaSemana) {
+                localStorage.removeItem('ultima_ubicacion_valida');
+            }
+        }
+    } catch (error) {
+        console.error('Error guardando ubicación para offline:', error);
+    }
+}
+
+// Al cargar la página, intentar obtener ubicación
+document.addEventListener('DOMContentLoaded', function() {
+    obtenerUbicacionConFallback().then(ubicacion => {
+        localStorage.setItem('ubicacion_login', JSON.stringify(ubicacion));
+        console.log('Ubicación obtenida para login:', ubicacion.fuente);
+        
+        // Si es una ubicación GPS válida, guardarla para uso offline futuro
+        if (ubicacion.fuente === 'gps') {
+            guardarUbicacionParaOffline(ubicacion);
+        }
+    });
+});
+
+// Modificar el envío del formulario para incluir información offline
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+    const ubicacionGuardada = localStorage.getItem('ubicacion_login');
+    
+    if (ubicacionGuardada) {
+        try {
+            const ubicacion = JSON.parse(ubicacionGuardada);
+            
+            const inputOculto = document.createElement('input');
+            inputOculto.type = 'hidden';
+            inputOculto.name = 'ubicacion';
+            inputOculto.value = JSON.stringify(ubicacion);
+            
+            this.appendChild(inputOculto);
+            localStorage.removeItem('ubicacion_login');
+            
+            console.log('Ubicación incluida en login:', ubicacion.fuente);
+        } catch (error) {
+            console.error('Error procesando ubicación para login:', error);
+        }
+    }
+});
+
+// Detectar cambios en la conectividad
+window.addEventListener('online', function() {
+    console.log('Conexión restablecida - sincronizando datos pendientes');
+    
+    // Intentar sincronizar ubicaciones pendientes
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(registration => {
+            if ('sync' in registration) {
+                registration.sync.register('sync-ubicaciones')
+                    .then(() => console.log('Sincronización de ubicaciones programada'))
+                    .catch(error => console.log('Error registrando sync:', error));
+            }
+        });
+    }
+});
+
+window.addEventListener('offline', function() {
+    console.log('Modo offline activado - usando ubicación cacheada');
+});
+</script>
+{% endblock %}

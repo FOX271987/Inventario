@@ -1,0 +1,869 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>🗺️ Geolocalización y Servicios Cercanos</h1>
+    <div class="controls">
+        <button class="btn btn-primary" onclick="getCurrentLocation()">
+            <i class="bi bi-geo-alt"></i> Obtener Mi Ubicación
+        </button>
+        <button class="btn btn-success" onclick="findNearbyServices()" id="servicesBtn" disabled>
+            <i class="bi bi-search"></i> Buscar Servicios
+        </button>
+        <button class="btn btn-warning" onclick="enableManualLocationAdjustment()" id="adjustBtn" disabled>
+            <i class="bi bi-geo"></i> Ajustar Manualmente
+        </button>
+        <button class="btn btn-secondary" onclick="clearMap()">
+            <i class="bi bi-trash"></i> Limpiar Mapa
+        </button>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> 
+    Para una experiencia personalizada, por favor permite el acceso a tu ubicación.
+    Usamos OpenStreetMap para mostrar servicios cercanos sin costo.
+</div>
+
+<div id="status" class="alert alert-secondary text-center">
+    Haz clic en "Obtener Mi Ubicación" para comenzar
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Mapa de Ubicación</h5>
+            </div>
+            <div class="card-body">
+                <div id="map" style="height: 500px; border-radius: 8px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Información de Ubicación</h5>
+            </div>
+            <div class="card-body">
+                <div id="coordinates">No disponibles</div>
+                <div id="address" style="margin-top: 10px; color: #666;"></div>
+                <div id="accuracy-info" style="margin-top: 10px; font-size: 0.9em;"></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">🏢 Servicios Cercanos</h5>
+            </div>
+            <div class="card-body">
+                <div class="filter-buttons mb-3">
+                    <button class="btn btn-sm btn-outline-primary filter-btn active" data-amenity="all">Todos</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="restaurant">Restaurantes</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="cafe">Cafés</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="hospital">Hospitales</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="pharmacy">Farmacias</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="bank">Bancos</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="fuel">Gasolineras</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="supermarket">Supermercados</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="transport">Transporte</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="education">Educación</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="shopping">Compras</button>
+                    <button class="btn btn-sm btn-outline-primary filter-btn" data-amenity="entertainment">Entretenimiento</button>
+                </div>
+                <div id="services-list" style="max-height: 300px; overflow-y: auto;">
+                    Primero obtén tu ubicación
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Load Leaflet CSS and JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+    #map {
+        width: 100%;
+        z-index: 1;
+    }
+    
+    .service-item {
+        border-left: 4px solid #0d6efd;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        background: var(--bs-light);
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+    
+    .service-item:hover {
+        transform: translateX(5px);
+    }
+    
+    .service-name {
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .service-type {
+        font-size: 12px;
+        color: #666;
+        background: #f0f0f0;
+        padding: 2px 8px;
+        border-radius: 10px;
+        display: inline-block;
+        margin-top: 4px;
+    }
+    
+    .leaflet-popup-content {
+        margin: 8px;
+    }
+    
+    .filter-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+    
+    .filter-btn.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+    
+    .loading {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #0d6efd;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 10px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .accuracy-good { color: #27ae60; font-weight: bold; }
+    .accuracy-moderate { color: #f39c12; font-weight: bold; }
+    .accuracy-poor { color: #e74c3c; font-weight: bold; }
+</style>
+
+<script>
+    let map;
+    let userMarker;
+    let accuracyCircle;
+    let servicesLayer;
+    let currentLat, currentLon;
+    let allServices = [];
+    let currentFilter = 'all';
+
+    // Inicializar mapa
+    function initMap() {
+        map = L.map('map').setView([20.6597, -103.3496], 13); // Centrado en Guadalajara como punto inicial
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        servicesLayer = L.layerGroup().addTo(map);
+    }
+
+    // Obtener ubicación actual MEJORADA
+    function getCurrentLocation() {
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerHTML = '<span class="loading"></span>Obteniendo ubicación precisa...';
+        statusDiv.className = 'alert alert-info text-center';
+        
+        if (!navigator.geolocation) {
+            statusDiv.innerHTML = '❌ Geolocalización no soportada por este navegador';
+            statusDiv.className = 'alert alert-danger text-center';
+            return;
+        }
+
+        // Opciones mejoradas para mayor precisión
+        const options = {
+            enableHighAccuracy: true,    // Forzar alta precisión
+            timeout: 15000,              // Más tiempo para obtener señal
+            maximumAge: 60000            // No usar datos de más de 1 minuto
+        };
+
+        // Intentar múltiples veces si es necesario
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        function attemptGeolocation() {
+            attempts++;
+            
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const accuracy = position.coords.accuracy;
+                    currentLat = position.coords.latitude;
+                    currentLon = position.coords.longitude;
+                    
+                    // Verificar precisión
+                    if (accuracy > 100 && attempts < maxAttempts) {
+                        statusDiv.innerHTML = `<span class="loading"></span>Precisión baja (${accuracy.toFixed(0)}m). Intentando nuevamente... (${attempts}/${maxAttempts})`;
+                        setTimeout(attemptGeolocation, 2000);
+                        return;
+                    }
+                    
+                    processLocation(position);
+                },
+                error => {
+                    handleLocationError(error, attempts, maxAttempts, attemptGeolocation, statusDiv);
+                },
+                options
+            );
+        }
+
+        attemptGeolocation();
+    }
+
+    function processLocation(position) {
+        const statusDiv = document.getElementById('status');
+        currentLat = position.coords.latitude;
+        currentLon = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
+        
+        // Actualizar coordenadas en la UI
+        document.getElementById('coordinates').innerHTML = 
+            `<strong>Latitud:</strong> ${currentLat.toFixed(6)}<br>
+             <strong>Longitud:</strong> ${currentLon.toFixed(6)}<br>
+             <strong>Precisión:</strong> ±${accuracy.toFixed(0)} metros`;
+        
+        // Mostrar información de precisión
+        const accuracyInfo = document.getElementById('accuracy-info');
+        let accuracyClass = 'accuracy-poor';
+        let accuracyText = 'Precisión baja';
+        
+        if (accuracy <= 50) {
+            accuracyClass = 'accuracy-good';
+            accuracyText = 'Excelente precisión';
+        } else if (accuracy <= 100) {
+            accuracyClass = 'accuracy-moderate';
+            accuracyText = 'Buena precisión';
+        }
+        
+        accuracyInfo.innerHTML = `<span class="${accuracyClass}">${accuracyText}</span>`;
+        
+        // Centrar mapa en ubicación con zoom adaptativo
+        const zoomLevel = accuracy > 500 ? 13 : accuracy > 100 ? 15 : 17;
+        map.setView([currentLat, currentLon], zoomLevel);
+        
+        // Limpiar marcadores anteriores
+        if (userMarker) {
+            map.removeLayer(userMarker);
+        }
+        if (accuracyCircle) {
+            map.removeLayer(accuracyCircle);
+        }
+        
+        // Marcador de usuario
+        userMarker = L.marker([currentLat, currentLon], {
+            icon: L.divIcon({
+                className: 'user-marker',
+                html: '<div style="background: #ff4444; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        }).addTo(map);
+        
+        // Círculo de precisión
+        accuracyCircle = L.circle([currentLat, currentLon], {
+            color: '#ff4444',
+            fillColor: '#ff4444',
+            fillOpacity: 0.1,
+            radius: accuracy
+        }).addTo(map);
+        
+        userMarker.bindPopup(`
+            <b>📍 Tu ubicación actual</b><br>
+            <small>Precisión: ±${accuracy.toFixed(0)} metros</small>
+        `).openPopup();
+        
+        // Obtener dirección
+        getReverseGeocoding(currentLat, currentLon);
+        
+        // Habilitar botones
+        document.getElementById('servicesBtn').disabled = false;
+        document.getElementById('adjustBtn').disabled = false;
+        
+        statusDiv.innerHTML = `✅ Ubicación obtenida (precisión: ±${accuracy.toFixed(0)}m)`;
+        statusDiv.className = 'alert alert-success text-center';
+    }
+
+    function handleLocationError(error, attempts, maxAttempts, retryFunction, statusDiv) {
+        let errorMsg = 'Error desconocido';
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                errorMsg = 'Permiso de geolocalización denegado. Por favor, permite el acceso a tu ubicación en la configuración del navegador.';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                if (attempts < maxAttempts) {
+                    statusDiv.innerHTML = `<span class="loading"></span>Señal no disponible. Reintentando... (${attempts}/${maxAttempts})`;
+                    setTimeout(retryFunction, 3000);
+                    return;
+                }
+                errorMsg = 'Información de ubicación no disponible. Verifica tu conexión a internet y GPS.';
+                break;
+            case error.TIMEOUT:
+                if (attempts < maxAttempts) {
+                    statusDiv.innerHTML = `<span class="loading"></span>Tiempo agotado. Reintentando... (${attempts}/${maxAttempts})`;
+                    setTimeout(retryFunction, 3000);
+                    return;
+                }
+                errorMsg = 'Tiempo agotado al obtener ubicación. Intenta en un lugar con mejor señal.';
+                break;
+        }
+        statusDiv.innerHTML = `❌ ${errorMsg}`;
+        statusDiv.className = 'alert alert-danger text-center';
+    }
+
+    // Función para permitir ajuste manual de ubicación
+    function enableManualLocationAdjustment() {
+        if (!userMarker) {
+            alert('Primero obtén tu ubicación automática');
+            return;
+        }
+        
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerHTML = '📍 <strong>Modo ajuste manual:</strong> Arrastra el marcador rojo a tu ubicación exacta y luego haz clic en "Confirmar ubicación"';
+        statusDiv.className = 'alert alert-warning text-center';
+        
+        // Hacer el marcador arrastrable
+        userMarker.dragging.enable();
+        
+        // Crear y agregar botón de confirmación
+        let confirmBtn = document.getElementById('confirm-location-btn');
+        if (!confirmBtn) {
+            confirmBtn = document.createElement('button');
+            confirmBtn.id = 'confirm-location-btn';
+            confirmBtn.className = 'btn btn-success btn-sm ms-2';
+            confirmBtn.innerHTML = '<i class="bi bi-check"></i> Confirmar ubicación';
+            confirmBtn.onclick = confirmManualLocation;
+        }
+        
+        statusDiv.appendChild(confirmBtn);
+    }
+
+    function confirmManualLocation() {
+        const newLatLng = userMarker.getLatLng();
+        currentLat = newLatLng.lat;
+        currentLon = newLatLng.lng;
+        
+        const statusDiv = document.getElementById('status');
+        const confirmBtn = document.getElementById('confirm-location-btn');
+        
+        // Actualizar coordenadas
+        document.getElementById('coordinates').innerHTML = 
+            `<strong>Latitud:</strong> ${currentLat.toFixed(6)}<br>
+             <strong>Longitud:</strong> ${currentLon.toFixed(6)}<br>
+             <small style="color: #f39c12;">📍 Ubicación ajustada manualmente</small>`;
+        
+        // Ocultar información de precisión
+        document.getElementById('accuracy-info').innerHTML = '';
+        
+        // Remover círculo de precisión
+        if (accuracyCircle) {
+            map.removeLayer(accuracyCircle);
+            accuracyCircle = null;
+        }
+        
+        // Obtener nueva dirección
+        getReverseGeocoding(currentLat, currentLon);
+        
+        statusDiv.innerHTML = '✅ Ubicación ajustada manualmente';
+        statusDiv.className = 'alert alert-success text-center';
+        
+        // Remover botón de confirmación
+        if (confirmBtn) {
+            confirmBtn.remove();
+        }
+        
+        // Deshabilitar arrastre
+        userMarker.dragging.disable();
+    }
+
+    // Geocodificación inversa para obtener dirección
+    async function getReverseGeocoding(lat, lon) {
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+            const data = await response.json();
+            
+            if (data && data.display_name) {
+                document.getElementById('address').innerHTML = 
+                    `<strong>📍 Dirección:</strong><br>${data.display_name}`;
+            }
+        } catch (error) {
+            console.log('Error al obtener dirección:', error);
+            document.getElementById('address').innerHTML = 
+                '<strong>📍 Dirección:</strong><br>No disponible';
+        }
+    }
+
+    // Buscar servicios cercanos
+    async function findNearbyServices() {
+        if (!currentLat || !currentLon) {
+            alert('Primero obtén tu ubicación');
+            return;
+        }
+
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerHTML = '<span class="loading"></span>Buscando servicios cercanos...';
+        statusDiv.className = 'alert alert-info text-center';
+
+        // Limpiar servicios anteriores
+        servicesLayer.clearLayers();
+        
+        try {
+            // Radio de búsqueda en metros (3km)
+            const radius = 3000;
+            
+            // Query optimizada para buscar TODOS los lugares cercanos
+            const overpassQuery = `
+                [out:json][timeout:45];
+                (
+                    node(around:${radius},${currentLat},${currentLon})[~"^(amenity|shop|tourism|leisure|office|historic|building)$"~"."];
+                    way(around:${radius},${currentLat},${currentLon})[~"^(amenity|shop|tourism|leisure|office|historic|building)$"~"."];
+                    relation(around:${radius},${currentLat},${currentLon})[~"^(amenity|shop|tourism|leisure|office|historic|building)$"~"."];
+                );
+                out center;
+            `;
+
+            const response = await fetch('https://overpass-api.de/api/interpreter', {
+                method: 'POST',
+                body: overpassQuery
+            });
+
+            const data = await response.json();
+            allServices = data.elements || [];
+            
+            // Procesar los resultados para obtener coordenadas consistentes
+            allServices = allServices.map(service => {
+                // Asegurar tags
+                service.tags = service.tags || {};
+                if (service.type === 'way' || service.type === 'relation') {
+                    // Para ways y relations, usar el centro
+                    return {
+                        ...service,
+                        lat: service.center ? service.center.lat : service.lat,
+                        lon: service.center ? service.center.lon : service.lon
+                    };
+                }
+                return service;
+            }).filter(service => service.lat && service.lon);
+            
+            displayServices();
+            addServiceMarkers();
+            
+            statusDiv.innerHTML = `✅ Se encontraron ${allServices.length} lugares cercanos (radio: ${radius/1000}km)`;
+            statusDiv.className = 'alert alert-success text-center';
+            
+        } catch (error) {
+            console.error('Error al buscar servicios:', error);
+            statusDiv.innerHTML = '❌ Error al buscar servicios. Inténtalo de nuevo.';
+            statusDiv.className = 'alert alert-danger text-center';
+        }
+    }
+
+    // Mostrar servicios en la lista
+    function displayServices() {
+        const servicesList = document.getElementById('services-list');
+        let filteredServices = [];
+        
+        // Protección: asegurar allServices es array
+        if (!Array.isArray(allServices)) allServices = [];
+        
+        if (currentFilter === 'all') {
+            filteredServices = allServices;
+        } else if (currentFilter === 'restaurant') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(restaurant|fast_food|food_court)/));
+        } else if (currentFilter === 'cafe') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(cafe|bar|pub)/));
+        } else if (currentFilter === 'hospital') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(hospital|clinic|doctors|dentist|pharmacy)/));
+        } else if (currentFilter === 'pharmacy') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity === 'pharmacy');
+        } else if (currentFilter === 'bank') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(bank|atm|bureau_de_change)/));
+        } else if (currentFilter === 'fuel') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(fuel|charging_station)/));
+        } else if (currentFilter === 'supermarket') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.shop && service.tags.shop.match(/(supermarket|convenience|mall|department_store)/));
+        } else if (currentFilter === 'transport') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(bus_station|taxi|car_rental|bicycle_rental|car_wash)/));
+        } else if (currentFilter === 'education') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(school|university|college|kindergarten|library)/));
+        } else if (currentFilter === 'shopping') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.shop && service.tags.shop.match(/(mall|department_store|clothes|shoes|jewelry|electronics|hairdresser|florist|bakery|butcher)/));
+        } else if (currentFilter === 'entertainment') {
+            filteredServices = allServices.filter(service => 
+                (service.tags && service.tags.amenity && service.tags.amenity.match(/(cinema|theatre|nightclub|arts_centre|casino)/)) ||
+                (service.tags && service.tags.leisure && service.tags.leisure.match(/(park|sports_centre|fitness_centre|gym|swimming_pool|stadium)/)));
+        } else {
+            filteredServices = allServices.filter(service => 
+                (service.tags && service.tags.amenity === currentFilter) || 
+                (service.tags && service.tags.shop === currentFilter) ||
+                (service.tags && service.tags.leisure === currentFilter));
+        }
+        
+        if (filteredServices.length === 0) {
+            servicesList.innerHTML = '<div class="text-center text-muted">No se encontraron servicios</div>';
+            return;
+        }
+
+        // Ordenar por distancia
+        filteredServices.forEach(s => {
+            if (typeof s.lat === 'number' && typeof s.lon === 'number') {
+                s._distance = calculateDistance(currentLat, currentLon, s.lat, s.lon);
+            } else {
+                s._distance = 1e7; // valor grande para ordenar al final
+            }
+        });
+
+        filteredServices.sort((a, b) => a._distance - b._distance);
+
+        servicesList.innerHTML = filteredServices.map(service => {
+            const tags = service.tags || {};
+            const name = tags.name || getServiceType(tags);
+            const type = getServiceCategory(tags);
+            const distance = isFinite(service._distance) ? service._distance : 0;
+            const distanceLabel = distance >= 1000 ? `${(distance/1000).toFixed(2)} km` : `${distance.toFixed(0)} m`;
+            
+            return `
+                <div class="service-item" onclick="focusOnService(${service.lat}, ${service.lon})">
+                    <div class="service-name">${escapeHtml(name)}</div>
+                    <div class="service-type">${escapeHtml(type)} • ${distanceLabel}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Obtener tipo de servicio en español
+    function getServiceType(tags) {
+        if (!tags) return 'Lugar';
+        if (tags.name) return tags.name;
+        
+        const types = {
+            'restaurant': 'Restaurante',
+            'cafe': 'Cafetería',
+            'fast_food': 'Comida rápida',
+            'bar': 'Bar',
+            'pub': 'Pub',
+            'hospital': 'Hospital',
+            'clinic': 'Clínica',
+            'pharmacy': 'Farmacia',
+            'bank': 'Banco',
+            'atm': 'Cajero automático',
+            'fuel': 'Gasolinera',
+            'charging_station': 'Estación de carga',
+            'supermarket': 'Supermercado',
+            'bakery': 'Panadería',
+            'convenience': 'Tienda de conveniencia',
+            'school': 'Escuela',
+            'university': 'Universidad',
+            'library': 'Biblioteca',
+            'cinema': 'Cine',
+            'theatre': 'Teatro',
+            'hotel': 'Hotel',
+            'post_office': 'Oficina de correos',
+            'police': 'Policía',
+            'place_of_worship': 'Lugar de culto',
+            'park': 'Parque',
+            'sports_centre': 'Centro deportivo',
+            'gym': 'Gimnasio',
+            'swimming_pool': 'Piscina',
+            'stadium': 'Estadio',
+            'mall': 'Centro comercial',
+            'department_store': 'Tienda departamental',
+            'clothes': 'Tienda de ropa',
+            'shoes': 'Tienda de zapatos',
+            'jewelry': 'Joyería',
+            'electronics': 'Electrónica',
+            'hairdresser': 'Peluquería',
+            'florist': 'Florería',
+            'butcher': 'Carnicería',
+            'default': 'Lugar'
+        };
+        
+        if (tags.amenity && types[tags.amenity]) return types[tags.amenity];
+        if (tags.shop && types[tags.shop]) return types[tags.shop];
+        if (tags.leisure && types[tags.leisure]) return types[tags.leisure];
+        
+        // Si no tiene nombre, intentar determinar el tipo
+        if (tags.amenity) return `${capitalize(tags.amenity)}`;
+        if (tags.shop) return `${capitalize(tags.shop)}`;
+        if (tags.leisure) return `${capitalize(tags.leisure)}`;
+        
+        return types.default;
+    }
+
+    // Obtener categoría de servicio
+    function getServiceCategory(tags) {
+        if (!tags) return 'Servicio';
+        if (tags.amenity === 'restaurant' || tags.amenity === 'fast_food' || tags.amenity === 'food_court') return 'Restaurante';
+        if (tags.amenity === 'cafe' || tags.amenity === 'bar' || tags.amenity === 'pub') return 'Café/Bar';
+        if (tags.amenity === 'hospital' || tags.amenity === 'clinic' || tags.amenity === 'doctors' || tags.amenity === 'dentist') return 'Salud';
+        if (tags.amenity === 'pharmacy') return 'Farmacia';
+        if (tags.amenity === 'bank' || tags.amenity === 'atm') return 'Banco';
+        if (tags.amenity === 'fuel' || tags.amenity === 'charging_station') return 'Combustible';
+        if (tags.shop === 'supermarket' || tags.shop === 'convenience') return 'Supermercado';
+        if (tags.amenity === 'bus_station' || tags.amenity === 'taxi') return 'Transporte';
+        if (tags.amenity === 'school' || tags.amenity === 'university') return 'Educación';
+        if (tags.shop && tags.shop !== 'supermarket' && tags.shop !== 'convenience') return 'Compras';
+        if (tags.amenity === 'cinema' || tags.amenity === 'theatre') return 'Entretenimiento';
+        if (tags.leisure === 'park' || tags.leisure === 'sports_centre') return 'Recreación';
+        
+        if (tags.amenity) return capitalize(tags.amenity);
+        if (tags.shop) return capitalize(tags.shop);
+        if (tags.leisure) return capitalize(tags.leisure);
+        
+        return 'Servicio';
+    }
+
+    // Obtener icono y color para cada tipo de servicio
+    function getServiceIcon(tags) {
+        const icons = {
+            'restaurant': { symbol: '🍽️', color: '#e74c3c' },
+            'cafe': { symbol: '☕', color: '#8b4513' },
+            'fast_food': { symbol: '🍔', color: '#f39c12' },
+            'bar': { symbol: '🍺', color: '#34495e' },
+            'pub': { symbol: '🍻', color: '#2c3e50' },
+            'hospital': { symbol: '🏥', color: '#e74c3c' },
+            'clinic': { symbol: '⛑️', color: '#e74c3c' },
+            'pharmacy': { symbol: '💊', color: '#27ae60' },
+            'bank': { symbol: '🏦', color: '#3498db' },
+            'atm': { symbol: '💳', color: '#3498db' },
+            'fuel': { symbol: '⛽', color: '#f39c12' },
+            'charging_station': { symbol: '🔌', color: '#2ecc71' },
+            'supermarket': { symbol: '🛒', color: '#2ecc71' },
+            'bakery': { symbol: '🥖', color: '#d35400' },
+            'convenience': { symbol: '🏪', color: '#2ecc71' },
+            'school': { symbol: '🏫', color: '#9b59b6' },
+            'university': { symbol: '🎓', color: '#8e44ad' },
+            'library': { symbol: '📚', color: '#16a085' },
+            'cinema': { symbol: '🎬', color: '#c0392b' },
+            'theatre': { symbol: '🎭', color: '#c0392b' },
+            'hotel': { symbol: '🏨', color: '#d35400' },
+            'post_office': { symbol: '📮', color: '#2980b9' },
+            'police': { symbol: '👮', color: '#2980b9' },
+            'place_of_worship': { symbol: '⛪', color: '#7f8c8d' },
+            'park': { symbol: '🌳', color: '#27ae60' },
+            'sports_centre': { symbol: '⚽', color: '#16a085' },
+            'gym': { symbol: '💪', color: '#16a085' },
+            'swimming_pool': { symbol: '🏊', color: '#3498db' },
+            'stadium': { symbol: '🏟️', color: '#8e44ad' },
+            'mall': { symbol: '🏬', color: '#e67e22' },
+            'department_store': { symbol: '🛍️', color: '#e67e22' },
+            'clothes': { symbol: '👕', color: '#9b59b6' },
+            'shoes': { symbol: '👟', color: '#95a5a6' },
+            'jewelry': { symbol: '💎', color: '#f1c40f' },
+            'electronics': { symbol: '📱', color: '#34495e' },
+            'hairdresser': { symbol: '💇', color: '#9b59b6' },
+            'florist': { symbol: '💐', color: '#e74c3c' },
+            'butcher': { symbol: '🥩', color: '#c0392b' },
+            'default': { symbol: '📍', color: '#95a5a6' }
+        };
+        
+        if (tags && tags.amenity && icons[tags.amenity]) return icons[tags.amenity];
+        if (tags && tags.shop && icons[tags.shop]) return icons[tags.shop];
+        if (tags && tags.leisure && icons[tags.leisure]) return icons[tags.leisure];
+        
+        return icons.default;
+    }
+
+    // Calcular distancia entre dos puntos — FÓRMULA DE HAVERSINE CORREGIDA
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        // Validaciones básicas para evitar NaN
+        if (![lat1, lon1, lat2, lon2].every(v => typeof v === 'number' && isFinite(v))) {
+            return 1e7;
+        }
+
+        const R = 6371e3; // Radio de la Tierra en metros
+        const phi1 = lat1 * Math.PI/180;
+        const phi2 = lat2 * Math.PI/180;
+        const deltaPhi = (lat2 - lat1) * Math.PI/180;
+        const deltaLambda = (lon2 - lon1) * Math.PI/180;
+
+        const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
+                  Math.cos(phi1) * Math.cos(phi2) *
+                  Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
+    }
+
+    // Agregar marcadores de servicios al mapa
+    function addServiceMarkers() {
+        servicesLayer.clearLayers();
+        
+        let filteredServices = [];
+        
+        if (currentFilter === 'all') {
+            filteredServices = allServices;
+        } else if (currentFilter === 'restaurant') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(restaurant|fast_food|food_court)/));
+        } else if (currentFilter === 'cafe') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(cafe|bar|pub)/));
+        } else if (currentFilter === 'hospital') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(hospital|clinic|doctors|dentist|pharmacy)/));
+        } else if (currentFilter === 'pharmacy') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity === 'pharmacy');
+        } else if (currentFilter === 'bank') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(bank|atm|bureau_de_change)/));
+        } else if (currentFilter === 'fuel') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(fuel|charging_station)/));
+        } else if (currentFilter === 'supermarket') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.shop && service.tags.shop.match(/(supermarket|convenience|mall|department_store)/));
+        } else if (currentFilter === 'transport') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(bus_station|taxi|car_rental|bicycle_rental|car_wash)/));
+        } else if (currentFilter === 'education') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.amenity && service.tags.amenity.match(/(school|university|college|kindergarten|library)/));
+        } else if (currentFilter === 'shopping') {
+            filteredServices = allServices.filter(service => 
+                service.tags && service.tags.shop && service.tags.shop.match(/(mall|department_store|clothes|shoes|jewelry|electronics|hairdresser|florist|bakery|butcher)/));
+        } else if (currentFilter === 'entertainment') {
+            filteredServices = allServices.filter(service => 
+                (service.tags && service.tags.amenity && service.tags.amenity.match(/(cinema|theatre|nightclub|arts_centre|casino)/)) ||
+                (service.tags && service.tags.leisure && service.tags.leisure.match(/(park|sports_centre|fitness_centre|gym|swimming_pool|stadium)/)));
+        } else {
+            filteredServices = allServices.filter(service => 
+                (service.tags && service.tags.amenity === currentFilter) || 
+                (service.tags && service.tags.shop === currentFilter) ||
+                (service.tags && service.tags.leisure === currentFilter));
+        }
+
+        // Añadir marcadores
+        filteredServices.forEach(service => {
+            const tags = service.tags || {};
+            const name = tags.name || getServiceType(tags);
+            const icon = getServiceIcon(tags);
+            const distance = calculateDistance(currentLat, currentLon, service.lat, service.lon);
+            
+            const marker = L.marker([service.lat, service.lon], {
+                icon: L.divIcon({
+                    className: 'service-marker',
+                    html: `<div style="background: ${icon.color}; color: white; padding: 4px; border-radius: 50%; font-size: 12px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">${icon.symbol}</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                })
+            }).addTo(servicesLayer);
+            
+            const distLabel = isFinite(distance) ? (distance >= 1000 ? `${(distance/1000).toFixed(2)} km` : `${distance.toFixed(0)} m`) : '—';
+            
+            marker.bindPopup(`
+                <b>${icon.symbol} ${escapeHtml(name)}</b><br>
+                <small>${escapeHtml(getServiceCategory(tags))}</small><br>
+                <small>Distancia: ${distLabel}</small>
+            `);
+        });
+    }
+
+    // Enfocar en un servicio específico
+    function focusOnService(lat, lon) {
+        map.setView([lat, lon], 18);
+    }
+
+    // Limpiar mapa
+    function clearMap() {
+        if (userMarker) {
+            map.removeLayer(userMarker);
+            userMarker = null;
+        }
+        if (accuracyCircle) {
+            map.removeLayer(accuracyCircle);
+            accuracyCircle = null;
+        }
+        servicesLayer.clearLayers();
+        allServices = [];
+        
+        document.getElementById('coordinates').innerHTML = 'No disponibles';
+        document.getElementById('address').innerHTML = '';
+        document.getElementById('accuracy-info').innerHTML = '';
+        document.getElementById('services-list').innerHTML = 'Primero obtén tu ubicación';
+        document.getElementById('servicesBtn').disabled = true;
+        document.getElementById('adjustBtn').disabled = true;
+        
+        // Remover botón de confirmación si existe
+        const confirmBtn = document.getElementById('confirm-location-btn');
+        if (confirmBtn) {
+            confirmBtn.remove();
+        }
+        
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerHTML = 'Mapa limpiado. Haz clic en "Obtener Mi Ubicación" para comenzar';
+        statusDiv.className = 'alert alert-secondary text-center';
+        
+        currentLat = null;
+        currentLon = null;
+    }
+
+    // Manejar filtros de servicios
+    document.addEventListener('DOMContentLoaded', function() {
+        initMap();
+        
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Remover clase active de todos los botones
+                filterBtns.forEach(b => b.classList.remove('active'));
+                
+                // Agregar clase active al botón clickeado
+                this.classList.add('active');
+                
+                // Actualizar filtro actual
+                currentFilter = this.dataset.amenity;
+                
+                // Actualizar servicios mostrados
+                if (allServices.length > 0) {
+                    displayServices();
+                    addServiceMarkers();
+                }
+            });
+        });
+    });
+
+    // Utilidades
+    function capitalize(str) {
+        if (!str) return '';
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(text) {
+        if (!text && text !== 0) return '';
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+{% endblock %}

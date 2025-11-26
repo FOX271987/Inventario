@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="auth-container">
+    <h2 class="text-center mb-4">Verificación en Dos Pasos</h2>
+    
+    <div class="alert alert-info">
+        <i class="bi bi-shield-check"></i>
+        <strong>Verificación de seguridad</strong><br>
+        Hemos enviado un código de verificación a <strong>{{ session['user_email'] }}</strong>
+    </div>
+
+    {% if codigo_offline %}
+    <div class="alert alert-warning">
+        <i class="bi bi-wifi-off"></i>
+        <strong>Modo offline</strong><br>
+        Código de verificación: <strong>{{ codigo_offline }}</strong>
+    </div>
+    {% endif %}
+    
+    <form method="POST">
+        <div class="mb-3">
+            <label for="codigo" class="form-label">Código de Verificación</label>
+            <input type="text" class="form-control" id="codigo" name="codigo" 
+                   placeholder="Ingresa el código de 6 dígitos" required maxlength="6"
+                   pattern="[0-9]{6}" title="Por favor ingresa exactamente 6 dígitos">
+            <div class="form-text">Revisa tu correo electrónico para obtener el código</div>
+        </div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Verificar y Continuar</button>
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <p>¿No recibiste el código? <a href="{{ url_for('auth.reenviar_codigo') }}">Reenviar código</a></p>
+        <p><a href="{{ url_for('auth.logout') }}">Cancelar y volver al inicio</a></p>
+    </div>
+</div>
+{% endblock %}

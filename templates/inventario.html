@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+
+{% block content %}
+<body data-user-rol="{{ session.get('user_rol', 'lector') }}">
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-box-seam"></i> Sistema de Inventario</h1>
+        <div class="btn-group">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalProducto" onclick="nuevoProducto()">
+                <i class="bi bi-plus-circle"></i> Nuevo Producto
+            </button>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalMovimiento" onclick="nuevoMovimiento('entrada')">
+                <i class="bi bi-arrow-down-circle"></i> Entrada
+            </button>
+            <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalMovimiento" onclick="nuevoMovimiento('salida')">
+                <i class="bi bi-arrow-up-circle"></i> Salida
+            </button>
+            <!-- ✅ NUEVO BOTÓN AGREGADO -->
+            <button class="btn btn-info" onclick="gestionarClientesProveedores()">
+                <i class="bi bi-people"></i> Clientes/Proveedores
+            </button>
+        </div>
+    </div>
+
+    <!-- Alertas de Stock -->
+    <div id="alertasStock" class="row mb-4" style="display: none;">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <h5><i class="bi bi-exclamation-triangle"></i> Alertas de Stock Bajo</h5>
+                <div id="listaAlertas"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros y Búsqueda -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Buscar Producto</label>
+                    <input type="text" class="form-control" id="buscarProducto" placeholder="Nombre o código...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Categoría</label>
+                    <select class="form-select" id="filtroCategoria">
+                        <option value="">Todas</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Estado</label>
+                    <select class="form-select" id="filtroEstado">
+                        <option value="">Todos</option>
+                        <option value="activo">Activos</option>
+                        <option value="inactivo">Inactivos</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Stock</label>
+                    <select class="form-select" id="filtroStock">
+                        <option value="">Todos</option>
+                        <option value="bajo">Stock Bajo</option>
+                        <option value="normal">Stock Normal</option>
+                        <option value="sin">Sin Stock</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button class="btn btn-outline-primary me-2" onclick="cargarProductos()">
+                        <i class="bi bi-funnel"></i> Filtrar
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="limpiarFiltros()">
+                        <i class="bi bi-arrow-clockwise"></i> Limpiar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas Rápidas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="totalProductos">0</h4>
+                            <p class="mb-0">Total Productos</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-box-seam fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="productosActivos">0</h4>
+                            <p class="mb-0">Productos Activos</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-check-circle fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="stockBajo">0</h4>
+                            <p class="mb-0">Stock Bajo</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-exclamation-triangle fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="sinStock">0</h4>
+                            <p class="mb-0">Sin Stock</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-x-circle fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Productos -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0"><i class="bi bi-list-ul"></i> Lista de Productos</h5>
+            <div>
+                <button class="btn btn-sm btn-outline-primary" onclick="exportarExcel()">
+                    <i class="bi bi-file-earmark-excel"></i> Excel
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="cargarProductos()">
+                    <i class="bi bi-arrow-repeat"></i> Actualizar
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="tablaProductos">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>Categoría</th>
+                            <th>Unidad</th>
+                            <th>Stock Mínimo</th>
+                            <th>Stock Actual</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoTabla">
+                        <!-- Los productos se cargan aquí dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="sinResultados" class="text-center py-4" style="display: none;">
+                <i class="bi bi-inbox fs-1 text-muted d-block mb-2"></i>
+                <p class="text-muted">No se encontraron productos</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Producto -->
+<div class="modal fade" id="modalProducto" tabindex="-1" aria-labelledby="modalProductoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalProductoLabel">
+                    <i class="bi bi-box-seam"></i> <span id="tituloModalProducto">Nuevo Producto</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formProducto" onsubmit="guardarProducto(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="productoId">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="codigo" class="form-label">Código *</label>
+                                <input type="text" class="form-control" id="codigo" required>
+                                <div class="form-text">Código único del producto</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="nombre" class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" id="nombre" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="categoria" class="form-label">Categoría</label>
+                                <input type="text" class="form-control" id="categoria" list="categoriasList">
+                                <datalist id="categoriasList">
+                                    <!-- Se llena dinámicamente -->
+                                </datalist>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="unidad" class="form-label">Unidad *</label>
+                                <select class="form-select" id="unidad" required>
+                                    <option value="">Seleccionar unidad...</option>
+                                    <option value="Pieza">Pieza</option>
+                                    <option value="Kilogramo">Kilogramo</option>
+                                    <option value="Litro">Litro</option>
+                                    <option value="Metro">Metro</option>
+                                    <option value="Caja">Caja</option>
+                                    <option value="Paquete">Paquete</option>
+                                    <option value="Rollo">Rollo</option>
+                                    <option value="Unidad">Unidad</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción</label>
+                        <textarea class="form-control" id="descripcion" rows="3"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="stockMinimo" class="form-label">Stock Mínimo</label>
+                                <input type="number" class="form-control" id="stockMinimo" min="0" value="0">
+                                <div class="form-text">Alerta cuando el stock esté por debajo de este nivel</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="stockActual" class="form-label">Stock Actual</label>
+                                <input type="number" class="form-control" id="stockActual" min="0" value="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnGuardarProducto">
+                        <i class="bi bi-check-circle"></i> Guardar Producto
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Movimientos -->
+<div class="modal fade" id="modalMovimiento" tabindex="-1" aria-labelledby="modalMovimientoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalMovimientoLabel">
+                    <i class="bi bi-arrow-left-right"></i> <span id="tituloModalMovimiento">Registrar Movimiento</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formMovimiento" onsubmit="guardarMovimiento(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="movimientoTipo">
+                    <div class="mb-3">
+                        <label for="productoMovimiento" class="form-label">Producto *</label>
+                        <select class="form-select" id="productoMovimiento" required>
+                            <option value="">Seleccionar producto...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cantidad" class="form-label">Cantidad *</label>
+                        <input type="number" class="form-control" id="cantidad" min="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="referencia" class="form-label">Referencia de Documento</label>
+                        <input type="text" class="form-control" id="referencia" placeholder="Factura, orden, etc.">
+                    </div>
+                    <div class="mb-3">
+                        <label for="responsable" class="form-label">Responsable *</label>
+                        <input type="text" class="form-control" id="responsable" value="{{ session['user_nombre'] }}" required>
+                    </div>
+                    <div id="campoProveedor" class="mb-3" style="display: none;">
+                        <label for="proveedor" class="form-label">Proveedor</label>
+                        <select class="form-select" id="proveedor">
+                            <option value="">Seleccionar proveedor...</option>
+                        </select>
+                    </div>
+                    <div id="campoCliente" class="mb-3" style="display: none;">
+                        <label for="cliente" class="form-label">Cliente</label>
+                        <select class="form-select" id="cliente">
+                            <option value="">Seleccionar cliente...</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info" id="infoStock">
+                        <i class="bi bi-info-circle"></i> Información del stock actual
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnGuardarMovimiento">
+                        <i class="bi bi-check-circle"></i> Registrar Movimiento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Historial -->
+<div class="modal fade" id="modalHistorial" tabindex="-1" aria-labelledby="modalHistorialLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalHistorialLabel">
+                    <i class="bi bi-clock-history"></i> Historial de Movimientos
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="tablaHistorial">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Referencia</th>
+                                <th>Responsable</th>
+                                <th>Stock Resultante</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cuerpoHistorial">
+                            <!-- El historial se carga aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ✅ MODALES NUEVOS PARA CLIENTES/PROVEEDORES -->
+<!-- Modal para Cliente -->
+<div class="modal fade" id="modalCliente" tabindex="-1" aria-labelledby="modalClienteLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalClienteLabel">
+                    <i class="bi bi-person-plus"></i> <span id="tituloModalCliente">Nuevo Cliente</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formCliente" onsubmit="guardarCliente(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="clienteId">
+                    <div class="mb-3">
+                        <label for="clienteNombre" class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" id="clienteNombre" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="clienteTelefono" class="form-label">Teléfono</label>
+                                <input type="text" class="form-control" id="clienteTelefono">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="clienteContacto" class="form-label">Persona de Contacto</label>
+                                <input type="text" class="form-control" id="clienteContacto">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="clienteEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="clienteEmail">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnGuardarCliente">
+                        <i class="bi bi-check-circle"></i> Guardar Cliente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Proveedor -->
+<div class="modal fade" id="modalProveedor" tabindex="-1" aria-labelledby="modalProveedorLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalProveedorLabel">
+                    <i class="bi bi-truck"></i> <span id="tituloModalProveedor">Nuevo Proveedor</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formProveedor" onsubmit="guardarProveedor(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="proveedorId">
+                    <div class="mb-3">
+                        <label for="proveedorNombre" class="form-label">Nombre *</label>
+                        <input type="text" class="form-control" id="proveedorNombre" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="proveedorTelefono" class="form-label">Teléfono</label>
+                                <input type="text" class="form-control" id="proveedorTelefono">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="proveedorContacto" class="form-label">Persona de Contacto</label>
+                                <input type="text" class="form-control" id="proveedorContacto">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="proveedorEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="proveedorEmail">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnGuardarProveedor">
+                        <i class="bi bi-check-circle"></i> Guardar Proveedor
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Gestión de Clientes/Proveedores -->
+<div class="modal fade" id="modalGestionClientesProveedores" tabindex="-1" aria-labelledby="modalGestionClientesProveedoresLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalGestionClientesProveedoresLabel">
+                    <i class="bi bi-people"></i> Gestión de Clientes y Proveedores
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" id="myTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="clientes-tab" data-bs-toggle="tab" data-bs-target="#clientes" type="button" role="tab">
+                            <i class="bi bi-person"></i> Clientes
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="proveedores-tab" data-bs-toggle="tab" data-bs-target="#proveedores" type="button" role="tab">
+                            <i class="bi bi-truck"></i> Proveedores
+                        </button>
+                    </li>
+                </ul>
+                <div class="tab-content" id="myTabContent">
+                    <!-- Pestaña Clientes -->
+                    <div class="tab-pane fade show active" id="clientes" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mt-3 mb-3">
+                            <h6>Lista de Clientes</h6>
+                            <button class="btn btn-sm btn-primary" onclick="nuevoCliente()">
+                                <i class="bi bi-person-plus"></i> Nuevo Cliente
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Contacto</th>
+                                        <th>Teléfono</th>
+                                        <th>Email</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaClientesBody">
+                                    <!-- Clientes se cargan aquí -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Pestaña Proveedores -->
+                    <div class="tab-pane fade" id="proveedores" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mt-3 mb-3">
+                            <h6>Lista de Proveedores</h6>
+                            <button class="btn btn-sm btn-primary" onclick="nuevoProveedor()">
+                                <i class="bi bi-truck"></i> Nuevo Proveedor
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Contacto</th>
+                                        <th>Teléfono</th>
+                                        <th>Email</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaProveedoresBody">
+                                    <!-- Proveedores se cargan aquí -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .stock-bajo { background-color: #fff3cd !important; }
+    .stock-critico { background-color: #f8d7da !important; }
+    .stock-normal { background-color: #d1edff !important; }
+    .producto-inactivo { opacity: 0.6; }
+    
+    .badge-stock { font-size: 0.8em; }
+    .acciones-rapidas { display: flex; gap: 5px; }
+    
+    @media (max-width: 768px) {
+        .acciones-rapidas { flex-direction: column; }
+    }
+</style>
+
+<script src="{{ url_for('static', filename='js/inventario.js') }}"></script>
+<script>
+    // Inicializar cuando el documento esté listo
+    document.addEventListener('DOMContentLoaded', function() {
+        // ✅ FORZAR QUE EL FILTRO DE ESTADO ESTÉ VACÍO (muestra TODOS)
+        document.getElementById('filtroEstado').value = '';
+        
+        cargarProductos(); // Esto ahora carga productos, estadísticas y categorías
+        cargarProveedoresClientes();
+        
+        // Configurar búsqueda en tiempo real CORREGIDA
+        document.getElementById('buscarProducto').addEventListener('input', function() {
+            clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(() => cargarProductos(), 500);
+        });
+        
+        // Configurar eventos para los otros filtros
+        document.getElementById('filtroCategoria').addEventListener('change', function() {
+            cargarProductos();
+        });
+        
+        document.getElementById('filtroEstado').addEventListener('change', function() {
+            cargarProductos();
+        });
+        
+        document.getElementById('filtroStock').addEventListener('change', function() {
+            cargarProductos();
+        });
+    });
+</script>
+</body>
+{% endblock %}

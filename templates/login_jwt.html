@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Sistema de Inventario</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+        }
+
+        .login-left {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .login-left h1 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .login-right {
+            padding: 50px;
+            flex: 1;
+        }
+
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+
+        .form-control {
+            padding: 12px;
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #667eea;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+        }
+
+        .feature-item i {
+            font-size: 1.5rem;
+            margin-right: 15px;
+            background: rgba(255,255,255,0.2);
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .login-container {
+                flex-direction: column;
+            }
+            .login-left {
+                padding: 30px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-left">
+            <div class="logo">
+                <i class="bi bi-box-seam"></i>
+            </div>
+            <h1>Sistema de Inventario</h1>
+            <p>Gestiona tus productos de forma eficiente y segura</p>
+            
+            <div class="mt-4">
+                <div class="feature-item">
+                    <i class="bi bi-shield-check"></i>
+                    <span>Autenticación segura con JWT</span>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-boxes"></i>
+                    <span>Control total de productos</span>
+                </div>
+                <div class="feature-item">
+                    <i class="bi bi-graph-up"></i>
+                    <span>Reportes y alertas en tiempo real</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="login-right">
+            <h2 class="mb-4">Iniciar Sesión</h2>
+            
+            <div id="alertContainer"></div>
+
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label for="email" class="form-label">
+                        <i class="bi bi-envelope"></i> Correo Electrónico
+                    </label>
+                    <input type="email" class="form-control" id="email" 
+                           placeholder="tu@email.com" required>
+                </div>
+
+                <div class="mb-3 position-relative">
+                    <label for="password" class="form-label">
+                        <i class="bi bi-lock"></i> Contraseña
+                    </label>
+                    <input type="password" class="form-control" id="password" 
+                           placeholder="••••••••" required>
+                    <i class="bi bi-eye password-toggle" id="togglePassword"></i>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="rememberMe">
+                    <label class="form-check-label" for="rememberMe">
+                        Recordar sesión
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-login w-100 mb-3">
+                    <i class="bi bi-box-arrow-in-right"></i> Iniciar Sesión
+                </button>
+            </form>
+
+            <hr class="my-4">
+
+            <div class="text-center">
+                <p class="text-muted mb-2">Usuarios de prueba:</p>
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                    <button class="btn btn-sm btn-outline-primary" 
+                            onclick="llenarCredenciales('admin@test.com', 'admin123')">
+                        Admin
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" 
+                            onclick="llenarCredenciales('editor@test.com', 'editor123')">
+                        Editor
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" 
+                            onclick="llenarCredenciales('lector@test.com', 'lector123')">
+                        Lector
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = '/api';
+
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const passwordInput = document.getElementById('password');
+            const type = passwordInput.type === 'password' ? 'text' : 'password';
+            passwordInput.type = type;
+            this.classList.toggle('bi-eye');
+            this.classList.toggle('bi-eye-slash');
+        });
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const rememberMe = document.getElementById('rememberMe').checked;
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Iniciando...';
+
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Error al iniciar sesión');
+                }
+
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+
+                if (rememberMe) {
+                    localStorage.setItem('rememberEmail', email);
+                }
+
+                mostrarAlerta('Inicio de sesión exitoso. Redirigiendo...', 'success');
+
+                setTimeout(() => {
+                    window.location.href = '/productos';
+                }, 1000);
+
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarAlerta(error.message, 'danger');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Iniciar Sesión';
+            }
+        });
+
+        function llenarCredenciales(email, password) {
+            document.getElementById('email').value = email;
+            document.getElementById('password').value = password;
+            mostrarAlerta(`Credenciales de ${email.split('@')[0]} cargadas`, 'info');
+        }
+
+        function mostrarAlerta(mensaje, tipo = 'info') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${mensaje}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            alertContainer.innerHTML = '';
+            alertContainer.appendChild(alertDiv);
+
+            if (tipo !== 'danger') {
+                setTimeout(() => alertDiv.remove(), 5000);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                fetch(`${API_URL}/auth/verify-token`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        window.location.href = '/productos';
+                    } else {
+                        localStorage.removeItem('token');
+                    }
+                })
+                .catch(() => localStorage.removeItem('token'));
+            }
+
+            const rememberedEmail = localStorage.getItem('rememberEmail');
+            if (rememberedEmail) {
+                document.getElementById('email').value = rememberedEmail;
+                document.getElementById('rememberMe').checked = true;
+            }
+        });
+    </script>
+</body>
+</html>

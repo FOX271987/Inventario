@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Registrar Nuevo Usuario</h1>
+
+<form id="formUsuario" method="POST">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="nombre" class="form-label">Nombre</label>
+                <input type="text" class="form-control" id="nombre" name="nombre" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="password" name="password" required minlength="6">
+                <div class="form-text">Mínimo 6 caracteres</div>
+            </div>
+
+            <div class="mb-3">
+                <label for="rol" class="form-label">Rol</label>
+                <select class="form-select" id="rol" name="rol" required>
+                    <option value="">Seleccionar rol</option>
+                    <option value="admin">Administrador</option>
+                    <option value="editor">Editor</option>
+                    <option value="lector">Lector</option>
+                </select>
+            </div>
+
+            <div class="d-grid gap-2 d-md-flex">
+                <button type="button" id="btnCrearUsuario" class="btn btn-primary">Crear Usuario</button>
+                <a href="{{ url_for('users.listar_usuarios') }}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Modal para autenticación PIN -->
+<div class="modal fade" id="modalPIN" tabindex="-1" aria-labelledby="modalPINLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalPINLabel">Autenticación Requerida</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Para continuar con la creación del usuario, ingresa tu PIN de administrador. 
+                    <strong>Revisa la consola del navegador para obtener el código.</strong>
+                </div>
+                <div class="mb-3">
+                    <label for="pinInput" class="form-label">PIN de Administrador (6 dígitos)</label>
+                    <input type="password" class="form-control" id="pinInput" maxlength="6" pattern="[0-9]{6}" 
+                           placeholder="000000" autocomplete="off">
+                    <div class="form-text">Ingresa el PIN mostrado en la consola del navegador</div>
+                </div>
+                <div id="pinError" class="alert alert-danger d-none">
+                    PIN incorrecto. Por favor verifica el código en la consola.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" id="btnVerificarPIN" class="btn btn-primary">Verificar PIN</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let pinGenerado = '';
+    const modal = new bootstrap.Modal(document.getElementById('modalPIN'));
+    const btnCrearUsuario = document.getElementById('btnCrearUsuario');
+    const btnVerificarPIN = document.getElementById('btnVerificarPIN');
+    const pinInput = document.getElementById('pinInput');
+    const pinError = document.getElementById('pinError');
+    const formUsuario = document.getElementById('formUsuario');
+
+    // Generar PIN de 6 dígitos
+    function generarPIN() {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    // Mostrar PIN en consola con estilo
+    function mostrarPINEnConsola(pin) {
+        console.clear();
+        console.log('%c🔐 AUTENTICACIÓN DE ADMINISTRADOR REQUERIDA 🔐', 
+                   'color: #dc3545; font-size: 18px; font-weight: bold;');
+        console.log('%c════════════════════════════════════════════════', 
+                   'color: #6c757d;');
+        console.log('%cPIN de verificación:', 'color: #0d6efd; font-weight: bold;');
+        console.log(`%c${pin}`, 'color: #198754; font-size: 24px; font-weight: bold; background: #f8f9fa; padding: 10px;');
+        console.log('%c════════════════════════════════════════════════', 
+                   'color: #6c757d;');
+        console.log('%cIngresa este PIN en el modal para continuar con la creación del usuario.', 
+                   'color: #6c757d; font-style: italic;');
+        console.log('%c⚠️  Este PIN es válido por 5 minutos', 
+                   'color: #fd7e14; font-weight: bold;');
+    }
+
+    // Validar formulario
+    function validarFormulario() {
+        const nombre = document.getElementById('nombre').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const rol = document.getElementById('rol').value;
+
+        if (!nombre || !email || !password || !rol) {
+            alert('Todos los campos son obligatorios');
+            return false;
+        }
+
+        if (password.length < 6) {
+            alert('La contraseña debe tener al menos 6 caracteres');
+            return false;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            alert('Por favor ingresa un email válido');
+            return false;
+        }
+
+        return true;
+    }
+
+    // Evento para crear usuario
+    btnCrearUsuario.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        if (!validarFormulario()) {
+            return;
+        }
+
+        // Generar nuevo PIN
+        pinGenerado = generarPIN();
+        mostrarPINEnConsola(pinGenerado);
+        
+        // Limpiar campo PIN y errores
+        pinInput.value = '';
+        pinError.classList.add('d-none');
+        
+        // Mostrar modal
+        modal.show();
+        
+        // Enfocar campo PIN cuando se muestre el modal
+        document.getElementById('modalPIN').addEventListener('shown.bs.modal', function() {
+            pinInput.focus();
+        }, { once: true });
+    });
+
+    // Evento para verificar PIN
+    btnVerificarPIN.addEventListener('click', function() {
+        const pinIngresado = pinInput.value.trim();
+        
+        if (pinIngresado.length !== 6) {
+            mostrarErrorPIN('El PIN debe tener exactamente 6 dígitos');
+            return;
+        }
+
+        if (pinIngresado === pinGenerado) {
+            // PIN correcto, ocultar modal y enviar formulario
+            modal.hide();
+            console.log('%c✅ PIN VERIFICADO CORRECTAMENTE', 'color: #198754; font-size: 16px; font-weight: bold;');
+            console.log('%cProcediendo con la creación del usuario...', 'color: #6c757d;');
+            
+            // Enviar formulario
+            formUsuario.submit();
+        } else {
+            mostrarErrorPIN('PIN incorrecto. Verifica el código en la consola del navegador.');
+            console.log('%c❌ PIN INCORRECTO', 'color: #dc3545; font-size: 16px; font-weight: bold;');
+            console.log('%cEl PIN correcto es:', 'color: #6c757d;');
+            console.log(`%c${pinGenerado}`, 'color: #198754; font-size: 20px; font-weight: bold;');
+        }
+    });
+
+    // Función para mostrar errores de PIN
+    function mostrarErrorPIN(mensaje) {
+        pinError.textContent = mensaje;
+        pinError.classList.remove('d-none');
+        pinInput.classList.add('is-invalid');
+        pinInput.focus();
+        pinInput.select();
+    }
+
+    // Limpiar error cuando el usuario escriba
+    pinInput.addEventListener('input', function() {
+        pinError.classList.add('d-none');
+        pinInput.classList.remove('is-invalid');
+        
+        // Solo permitir números
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+
+    // Permitir envío con Enter
+    pinInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            btnVerificarPIN.click();
+        }
+    });
+
+    // Limpiar consola cuando se cierre el modal
+    document.getElementById('modalPIN').addEventListener('hidden.bs.modal', function() {
+        if (pinInput.value !== pinGenerado) {
+            console.clear();
+            console.log('%cModal de autenticación cerrado', 'color: #6c757d;');
+        }
+    });
+
+    // Auto-expirar PIN después de 5 minutos
+    function programarExpiracionPIN() {
+        setTimeout(function() {
+            if (pinGenerado) {
+                console.log('%c⏰ PIN EXPIRADO', 'color: #dc3545; font-size: 16px; font-weight: bold;');
+                console.log('%cEl PIN ha expirado por seguridad. Genera uno nuevo.', 'color: #6c757d;');
+                pinGenerado = '';
+            }
+        }, 5 * 60 * 1000); // 5 minutos
+    }
+
+    // Programar expiración cuando se genere un PIN
+    btnCrearUsuario.addEventListener('click', programarExpiracionPIN);
+});
+</script>
+
+<style>
+.modal-content {
+    border: 2px solid #0d6efd;
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+#pinInput {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    letter-spacing: 0.3em;
+}
+
+#pinInput:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.alert-info {
+    border-left: 4px solid #0dcaf0;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+</style>
+{% endblock %}

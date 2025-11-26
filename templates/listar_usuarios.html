@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Gestión de Usuarios</h2>
+    {% if user_rol == 'admin' %}
+    <a href="{{ url_for('users.nuevo_usuario') }}" class="btn btn-primary">
+        <i class="bi bi-person-plus"></i> Nuevo Usuario
+    </a>
+    {% endif %}
+</div>
+
+<!-- Filtros -->
+<form method="GET" class="row g-3 mb-4">
+    <div class="col-md-4">
+        <label for="nombre" class="form-label">Nombre</label>
+        <input type="text" class="form-control" id="nombre" name="nombre" 
+               value="{{ request.args.get('nombre', '') }}" placeholder="Buscar por nombre...">
+    </div>
+    <div class="col-md-4">
+        <label for="rol" class="form-label">Rol</label>
+        <select class="form-select" id="rol" name="rol">
+            <option value="">Todos los roles</option>
+            <option value="admin" {% if request.args.get('rol') == 'admin' %}selected{% endif %}>Administrador</option>
+            <option value="editor" {% if request.args.get('rol') == 'editor' %}selected{% endif %}>Editor</option>
+            <option value="lector" {% if request.args.get('rol') == 'lector' %}selected{% endif %}>Lector</option>
+        </select>
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary me-2">
+            <i class="bi bi-funnel"></i> Filtrar
+        </button>
+        <a href="{{ url_for('users.listar_usuarios') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-clockwise"></i> Limpiar
+        </a>
+    </div>
+</form>
+
+<!-- Tabla de usuarios -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usuario in usuarios %}
+                    <tr>
+                        <td>{{ usuario.id }}</td>
+                        <td>{{ usuario.nombre }}</td>
+                        <td>{{ usuario.email }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if usuario.rol == 'admin' else 'warning' if usuario.rol == 'editor' else 'info' }}">
+                                {{ usuario.rol }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('users.editar_usuario', id=usuario.id) }}" 
+                                   class="btn btn-outline-primary" title="Editar">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {% if user_rol == 'admin' and usuario.id != session['user_id'] %}
+                                <form method="POST" action="{{ url_for('users.eliminar_usuario', id=usuario.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este usuario?');">
+                                    <button type="submit" class="btn btn-outline-danger" title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            <i class="bi bi-people display-4 d-block mb-2"></i>
+                            No se encontraron usuarios
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

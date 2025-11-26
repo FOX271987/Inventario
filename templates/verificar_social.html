@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="auth-container">
+    <h2 class="text-center mb-4">Verificación en Dos Pasos</h2>
+    
+    <div class="alert alert-info">
+        <i class="bi bi-envelope-check"></i>
+        <strong>Verificación requerida</strong><br>
+        Hemos enviado un código de verificación a <strong>{{ session['social_auth']['email'] }}</strong>
+    </div>
+    
+    <form method="POST">
+        <div class="mb-3">
+            <label for="codigo" class="form-label">Código de Verificación</label>
+            <input type="text" class="form-control" id="codigo" name="codigo" 
+                   placeholder="Ingresa el código de 6 dígitos" required maxlength="6"
+                   pattern="[0-9]{6}" title="Por favor ingresa exactamente 6 dígitos">
+            <div class="form-text">Revisa tu correo electrónico para obtener el código</div>
+        </div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Verificar y Continuar</button>
+        </div>
+    </form>
+
+    <div class="text-center mt-3">
+        <p>¿No recibiste el código? <a href="#" onclick="reenviarCodigo()">Reenviar código</a></p>
+        <p><a href="{{ url_for('auth.login') }}">Volver al inicio de sesión</a></p>
+    </div>
+</div>
+
+<script>
+    function reenviarCodigo() {
+        fetch('{{ url_for("auth.reenviar_codigo_social") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Código reenviado correctamente. Revisa tu correo.');
+            } else {
+                alert('Error al reenviar código: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al reenviar código');
+        });
+    }
+</script>
+{% endblock %}
