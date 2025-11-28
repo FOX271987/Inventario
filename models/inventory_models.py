@@ -81,7 +81,8 @@ class Movimiento(db.Model):
 
     ID_Movimiento = db.Column(db.Integer, primary_key=True)
     Fecha = db.Column(db.DateTime, default=datetime.utcnow)
-    Tipo = db.Column(db.Enum('Entrada', 'Salida'), nullable=False)
+    # CORREGIDO: Agregado name='tipo_movimiento' para PostgreSQL
+    Tipo = db.Column(db.Enum('Entrada', 'Salida', name='tipo_movimiento'), nullable=False)
     ID_Producto = db.Column(db.Integer, db.ForeignKey('productos.ID_Producto'), nullable=False)
     Cantidad = db.Column(db.Integer, nullable=False)
     Referencia_Documento = db.Column(db.String(100))
