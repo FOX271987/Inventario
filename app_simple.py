@@ -33,10 +33,73 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
+# Función para crear tablas adicionales que no son de SQLAlchemy ORM
+def crear_tablas_adicionales():
+    """Crear tablas que usan SQL puro (no SQLAlchemy ORM)"""
+    from utils.database import get_connection
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Crear tabla usuarios
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) NOT NULL,
+                email VARCHAR(150) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                rol VARCHAR(20) DEFAULT 'lector',
+                sesion_activa BOOLEAN DEFAULT FALSE,
+                ultima_sesion TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Crear tabla ubicaciones_usuarios
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ubicaciones_usuarios (
+                id SERIAL PRIMARY KEY,
+                usuario_id INTEGER REFERENCES usuarios(id),
+                latitud DECIMAL(10, 8),
+                longitud DECIMAL(11, 8),
+                precision_metros DECIMAL(10, 2),
+                direccion TEXT,
+                ciudad VARCHAR(100),
+                pais VARCHAR(100),
+                actualizado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Crear tabla codigos_verificacion
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS codigos_verificacion (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(150) NOT NULL,
+                codigo VARCHAR(10) NOT NULL,
+                expiracion TIMESTAMP NOT NULL,
+                usado BOOLEAN DEFAULT FALSE,
+                creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        print("✅ Tablas adicionales creadas/verificadas")
+        
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        print(f"⚠️ Error creando tablas adicionales: {e}")
+
 # Crear tablas automáticamente en producción
 with app.app_context():
-    db.create_all()
-    print("✅ Tablas de base de datos verificadas/creadas")
+    db.create_all()  # Crear tablas de SQLAlchemy ORM (productos, movimientos, etc.)
+    print("✅ Tablas SQLAlchemy verificadas/creadas")
+    
+    # Crear tablas adicionales (usuarios, ubicaciones, etc.)
+    if os.getenv('RENDER', 'false').lower() == 'true':
+        crear_tablas_adicionales()
 
 # Configurar CORS
 CORS(app, resources={
