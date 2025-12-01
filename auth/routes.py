@@ -1,3 +1,4 @@
+# auth/routes.py - VERSIÓN CON JWT INTEGRADO
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from auth.decorators import admin_required, login_required, twofa_required
 from auth.utils import (
@@ -32,10 +33,10 @@ def crear_respuesta_con_jwt(redirect_url, user_id, email, nombre, rol):
     response.set_cookie(
         'jwt_token',
         token,
-        httponly=True,  # No accesible desde JavaScript (más seguro)
-        secure=True,    # Solo HTTPS en producción
-        samesite='Lax', # Protección CSRF
-        max_age=86400   # 24 horas
+        httponly=True,      # No accesible desde JavaScript (más seguro)
+        secure=False,       # Cambiar a True en producción con HTTPS
+        samesite='Lax',     # Protección CSRF
+        max_age=86400       # 24 horas
     )
     
     # También guardarlo en sesión para acceso fácil
@@ -43,17 +44,26 @@ def crear_respuesta_con_jwt(redirect_url, user_id, email, nombre, rol):
     
     return response
 
-# ===== ENDPOINT PARA OBTENER JWT (para JavaScript) =====
+# ===== ENDPOINT PARA OBTENER JWT (para JavaScript/API) =====
 
 @auth_bp.route('/api/get-token')
 @login_required
 @twofa_required
 def get_jwt_token():
-    """Obtener el JWT del usuario actual (para uso en JavaScript)"""
+    """
+    Obtener el JWT del usuario actual.
+    Útil para JavaScript que necesita hacer llamadas a la API.
+    """
     if 'jwt_token' in session:
         return jsonify({
             'success': True,
-            'token': session['jwt_token']
+            'token': session['jwt_token'],
+            'user': {
+                'id': session.get('user_id'),
+                'nombre': session.get('user_nombre'),
+                'email': session.get('user_email'),
+                'rol': session.get('user_rol')
+            }
         })
     
     # Si no hay token en sesión, generar uno nuevo
@@ -67,12 +77,49 @@ def get_jwt_token():
     
     return jsonify({
         'success': True,
-        'token': token
+        'token': token,
+        'user': {
+            'id': session.get('user_id'),
+            'nombre': session.get('user_nombre'),
+            'email': session.get('user_email'),
+            'rol': session.get('user_rol')
+        }
     })
+
+@auth_bp.route('/api/refresh-token', methods=['POST'])
+@login_required
+@twofa_required
+def refresh_jwt_token():
+    """Renovar el token JWT antes de que expire"""
+    token = generar_token(
+        user_id=session['user_id'],
+        email=session['user_email'],
+        nombre=session['user_nombre'],
+        rol=session['user_rol']
+    )
+    session['jwt_token'] = token
+    
+    response = jsonify({
+        'success': True,
+        'token': token,
+        'message': 'Token renovado exitosamente'
+    })
+    
+    # También actualizar la cookie
+    response.set_cookie(
+        'jwt_token',
+        token,
+        httponly=True,
+        secure=False,  # Cambiar a True en producción
+        samesite='Lax',
+        max_age=86400
+    )
+    
+    return response
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    if 'user_id' in session:
+    if 'user_id' in session and session.get('twofa_verified', False):
         return redirect(url_for('users.listar_usuarios'))
     
     if request.method == 'POST':
@@ -181,66 +228,49 @@ def verificar_2fa():
     if request.method == 'POST':
         codigo = request.form['codigo']
         
-        if codigo_offline:
-            if codigo == codigo_offline:
-                session['twofa_verified'] = True
-                session.pop('codigo_offline_2fa', None)
-                from utils.database import get_connection
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE usuarios 
-                    SET sesion_activa = TRUE, ultima_sesion = CURRENT_TIMESTAMP 
-                    WHERE id = %s
-                """, (session['user_id'],))
-                conn.commit()
-                cursor.close()
-                conn.close()
-                flash('Verificación offline exitosa. ¡Bienvenido!', 'success')
-                
-                # ✅ GENERAR JWT Y REDIRIGIR CON COOKIE
-                return crear_respuesta_con_jwt(
-                    url_for('users.listar_usuarios'),
-                    session['user_id'],
-                    session['user_email'],
-                    session['user_nombre'],
-                    session['user_rol']
-                )
-            else:
-                flash('Código de verificación inválido', 'error')
-        else:
-            if not codigo or len(codigo) != 6:
-                flash('Por favor ingresa un código válido de 6 dígitos', 'error')
-                return render_template('verificar_2fa.html', codigo_offline=codigo_offline)
-            
+        verificacion_exitosa = False
+        
+        if codigo_offline and codigo == codigo_offline:
+            verificacion_exitosa = True
+            session.pop('codigo_offline_2fa', None)
+        elif codigo and len(codigo) == 6:
             try:
                 if Usuario.verificar_codigo(session['user_email'], codigo):
-                    session['twofa_verified'] = True
-                    from utils.database import get_connection
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                    UPDATE usuarios 
-                    SET sesion_activa = TRUE, ultima_sesion = CURRENT_TIMESTAMP 
-                    WHERE id = %s
-                """, (session['user_id'],))
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-                    flash('Verificación exitosa. ¡Bienvenido!', 'success')
-                    
-                    # ✅ GENERAR JWT Y REDIRIGIR CON COOKIE
-                    return crear_respuesta_con_jwt(
-                        url_for('users.listar_usuarios'),
-                        session['user_id'],
-                        session['user_email'],
-                        session['user_nombre'],
-                        session['user_rol']
-                    )
-                else:
-                    flash('Código de verificación inválido o expirado', 'error')
+                    verificacion_exitosa = True
             except Exception as e:
                 flash(f'Error al verificar código: {str(e)}', 'error')
+        else:
+            flash('Por favor ingresa un código válido de 6 dígitos', 'error')
+            return render_template('verificar_2fa.html', codigo_offline=codigo_offline)
+        
+        if verificacion_exitosa:
+            session['twofa_verified'] = True
+            
+            # Actualizar sesión activa en BD
+            from utils.database import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE usuarios 
+                SET sesion_activa = TRUE, ultima_sesion = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (session['user_id'],))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            flash('Verificación exitosa. ¡Bienvenido!', 'success')
+            
+            # ✅ GENERAR JWT Y REDIRIGIR CON COOKIE
+            return crear_respuesta_con_jwt(
+                url_for('users.listar_usuarios'),
+                session['user_id'],
+                session['user_email'],
+                session['user_nombre'],
+                session['user_rol']
+            )
+        else:
+            flash('Código de verificación inválido o expirado', 'error')
     
     return render_template('verificar_2fa.html', codigo_offline=codigo_offline)
 
@@ -344,50 +374,48 @@ def verificar_recuperacion():
         nueva_password = request.form['nueva_password']
         confirm_password = request.form['confirm_password']
         
-        if codigo_offline:
-            if codigo == codigo_offline:
-                usuario = Usuario.obtener_por_email(session['recovery_email'])
-                try:
-                    Usuario.actualizar_password(usuario.id, nueva_password)
-                    session.pop('recovery_email', None)
-                    session.pop('codigo_offline', None)
-                    flash('Contraseña actualizada exitosamente. Por favor inicia sesión.', 'success')
-                    return redirect(url_for('auth.login'))
-                except Exception as e:
-                    flash(f'Error al actualizar contraseña: {str(e)}', 'error')
-            else:
-                flash('Código de verificación inválido', 'error')
-        else:
-            if not codigo or len(codigo) != 6:
-                flash('Por favor ingresa un código válido de 6 dígitos', 'error')
-                return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
-            
-            if not nueva_password or len(nueva_password) < 6:
-                flash('La nueva contraseña debe tener al menos 6 caracteres', 'error')
-                return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
-            
-            if nueva_password != confirm_password:
-                flash('Las contraseñas no coinciden', 'error')
-                return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
-            
+        if not nueva_password or len(nueva_password) < 6:
+            flash('La nueva contraseña debe tener al menos 6 caracteres', 'error')
+            return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
+        
+        if nueva_password != confirm_password:
+            flash('Las contraseñas no coinciden', 'error')
+            return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
+        
+        verificacion_exitosa = False
+        
+        if codigo_offline and codigo == codigo_offline:
+            verificacion_exitosa = True
+        elif codigo and len(codigo) == 6:
             try:
                 if Usuario.verificar_codigo(session['recovery_email'], codigo):
-                    usuario = Usuario.obtener_por_email(session['recovery_email'])
-                    Usuario.actualizar_password(usuario.id, nueva_password)
-                    
-                    session.pop('recovery_email', None)
-                    flash('Contraseña actualizada exitosamente. Por favor inicia sesión.', 'success')
-                    return redirect(url_for('auth.login'))
-                else:
-                    flash('Código de verificación inválido o expirado', 'error')
+                    verificacion_exitosa = True
+            except Exception as e:
+                flash(f'Error al verificar código: {str(e)}', 'error')
+        else:
+            flash('Por favor ingresa un código válido de 6 dígitos', 'error')
+            return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
+        
+        if verificacion_exitosa:
+            try:
+                usuario = Usuario.obtener_por_email(session['recovery_email'])
+                Usuario.actualizar_password(usuario.id, nueva_password)
+                
+                session.pop('recovery_email', None)
+                session.pop('codigo_offline', None)
+                
+                flash('Contraseña actualizada exitosamente. Por favor inicia sesión.', 'success')
+                return redirect(url_for('auth.login'))
             except Exception as e:
                 flash(f'Error al actualizar contraseña: {str(e)}', 'error')
+        else:
+            flash('Código de verificación inválido o expirado', 'error')
     
     return render_template('verificar_recuperacion.html', codigo_offline=codigo_offline)
 
 @auth_bp.route('/registro', methods=['GET', 'POST'])
 def registro():
-    if 'user_id' in session:
+    if 'user_id' in session and session.get('twofa_verified', False):
         return redirect(url_for('users.listar_usuarios'))
     
     if request.method == 'POST':
@@ -504,7 +532,7 @@ def auth_google():
             'nombre': nombre,
             'proveedor': 'google',
             'user_id': usuario.id,
-            'rol': usuario.rol  # Agregar rol para JWT
+            'rol': usuario.rol
         }
         
         flash('Código de verificación enviado. Revisa tu correo.', 'info')
