@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify, make_response
 from auth.decorators import admin_required, login_required, twofa_required
 from auth.utils import (
     generar_codigo_verificacion, enviar_correo, verificar_conexion,
@@ -10,7 +10,65 @@ import time
 import requests
 from datetime import datetime, timedelta
 
+# Importar funciones JWT desde swagger_config
+from swagger_config import generar_token, verificar_token
+
 auth_bp = Blueprint('auth', __name__)
+
+# ===== FUNCIÓN AUXILIAR PARA GUARDAR JWT EN COOKIE =====
+
+def crear_respuesta_con_jwt(redirect_url, user_id, email, nombre, rol):
+    """Crear respuesta con JWT en cookie httpOnly"""
+    token = generar_token(
+        user_id=user_id,
+        email=email,
+        nombre=nombre,
+        rol=rol
+    )
+    
+    response = make_response(redirect(redirect_url))
+    
+    # Guardar JWT en cookie segura
+    response.set_cookie(
+        'jwt_token',
+        token,
+        httponly=True,  # No accesible desde JavaScript (más seguro)
+        secure=True,    # Solo HTTPS en producción
+        samesite='Lax', # Protección CSRF
+        max_age=86400   # 24 horas
+    )
+    
+    # También guardarlo en sesión para acceso fácil
+    session['jwt_token'] = token
+    
+    return response
+
+# ===== ENDPOINT PARA OBTENER JWT (para JavaScript) =====
+
+@auth_bp.route('/api/get-token')
+@login_required
+@twofa_required
+def get_jwt_token():
+    """Obtener el JWT del usuario actual (para uso en JavaScript)"""
+    if 'jwt_token' in session:
+        return jsonify({
+            'success': True,
+            'token': session['jwt_token']
+        })
+    
+    # Si no hay token en sesión, generar uno nuevo
+    token = generar_token(
+        user_id=session['user_id'],
+        email=session['user_email'],
+        nombre=session['user_nombre'],
+        rol=session['user_rol']
+    )
+    session['jwt_token'] = token
+    
+    return jsonify({
+        'success': True,
+        'token': token
+    })
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -139,7 +197,15 @@ def verificar_2fa():
                 cursor.close()
                 conn.close()
                 flash('Verificación offline exitosa. ¡Bienvenido!', 'success')
-                return redirect(url_for('users.listar_usuarios'))
+                
+                # ✅ GENERAR JWT Y REDIRIGIR CON COOKIE
+                return crear_respuesta_con_jwt(
+                    url_for('users.listar_usuarios'),
+                    session['user_id'],
+                    session['user_email'],
+                    session['user_nombre'],
+                    session['user_rol']
+                )
             else:
                 flash('Código de verificación inválido', 'error')
         else:
@@ -162,7 +228,15 @@ def verificar_2fa():
                     cursor.close()
                     conn.close()
                     flash('Verificación exitosa. ¡Bienvenido!', 'success')
-                    return redirect(url_for('users.listar_usuarios'))
+                    
+                    # ✅ GENERAR JWT Y REDIRIGIR CON COOKIE
+                    return crear_respuesta_con_jwt(
+                        url_for('users.listar_usuarios'),
+                        session['user_id'],
+                        session['user_email'],
+                        session['user_nombre'],
+                        session['user_rol']
+                    )
                 else:
                     flash('Código de verificación inválido o expirado', 'error')
             except Exception as e:
@@ -429,7 +503,8 @@ def auth_google():
             'email': email,
             'nombre': nombre,
             'proveedor': 'google',
-            'user_id': usuario.id
+            'user_id': usuario.id,
+            'rol': usuario.rol  # Agregar rol para JWT
         }
         
         flash('Código de verificación enviado. Revisa tu correo.', 'info')
@@ -451,7 +526,14 @@ def verificar_social():
         codigo = request.form['codigo']
         email = session['social_auth']['email']
         
+        verificacion_exitosa = False
+        
         if codigo_simulado and codigo == codigo_simulado:
+            verificacion_exitosa = True
+        elif Usuario.verificar_codigo(email, codigo):
+            verificacion_exitosa = True
+        
+        if verificacion_exitosa:
             usuario = Usuario.obtener_por_email(email)
             
             session['user_id'] = usuario.id
@@ -464,21 +546,15 @@ def verificar_social():
             session.pop('codigo_simulado', None)
             
             flash(f'¡Bienvenido {usuario.nombre}!', 'success')
-            return redirect(url_for('users.listar_usuarios'))
-        
-        if Usuario.verificar_codigo(email, codigo):
-            usuario = Usuario.obtener_por_email(email)
             
-            session['user_id'] = usuario.id
-            session['user_nombre'] = usuario.nombre
-            session['user_email'] = usuario.email
-            session['user_rol'] = usuario.rol
-            session['twofa_verified'] = True
-            
-            session.pop('social_auth', None)
-            
-            flash(f'¡Bienvenido {usuario.nombre}!', 'success')
-            return redirect(url_for('users.listar_usuarios'))
+            # ✅ GENERAR JWT Y REDIRIGIR CON COOKIE
+            return crear_respuesta_con_jwt(
+                url_for('users.listar_usuarios'),
+                usuario.id,
+                usuario.email,
+                usuario.nombre,
+                usuario.rol
+            )
         else:
             flash('Código de verificación inválido o expirado', 'error')
     
@@ -535,8 +611,13 @@ def logout():
             print(f"❌ Error al actualizar estado de sesión: {e}")
     
     session.clear()
+    
+    # ✅ Eliminar cookie JWT al cerrar sesión
+    response = make_response(redirect(url_for('auth.login')))
+    response.delete_cookie('jwt_token')
+    
     flash('Sesión cerrada exitosamente', 'success')
-    return redirect(url_for('auth.login'))
+    return response
 
 @auth_bp.route('/forzar-logout/<email>')
 @login_required
